@@ -1,0 +1,102 @@
+import express from 'express';
+import cors from 'cors';
+import { clerkMiddleware } from '@clerk/express';
+import { env } from './config/env.js';
+import { requireAuthenticatedUser } from './middleware/auth.js';
+import { requireWorkspace } from './middleware/workspace.js';
+import workspacesRouter from './routes/workspaces.js';
+import businessesRouter from './routes/businesses.js';
+import jobsRouter from './routes/jobs.js';
+import searchRunsRouter from './routes/search-runs.js';
+import competitorsRouter from './routes/competitors.js';
+import keywordsRouter from './routes/keywords.js';
+import analysisRouter from './routes/analysis.js';
+import reportsRouter from './routes/reports.js';
+import schedulesRouter from './routes/schedules.js';
+import {
+  startWebsiteAnalysisWorker,
+  startResearchWorker,
+} from './jobs/workers/research.worker.js';
+import { startReportWorker } from './jobs/workers/report.worker.js';
+import { startStaleCheckWorker } from './jobs/workers/stale-check.worker.js';
+import { syncAllWorkspaceSchedules } from './jobs/scheduler.js';
+
+const app = express();
+
+app.use(
+  cors({
+    origin: [env.FRONTEND_URL, 'http://localhost:3000'],
+    credentials: true,
+  })
+);
+app.use(express.json());
+
+// Apply Clerk middleware globally to parse authorization tokens
+app.use(
+  clerkMiddleware({
+    publishableKey: env.CLERK_PUBLISHABLE_KEY,
+    secretKey: env.CLERK_SECRET_KEY,
+  })
+);
+
+// Public health check
+app.get('/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'serp-scout-api',
+    environment: env.NODE_ENV,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Protected Workspace Routes
+app.use('/api/workspaces', requireAuthenticatedUser, workspacesRouter);
+
+// Protected Schedules, Notifications, and Automation Routes
+app.use('/api/workspaces/me/schedule', requireAuthenticatedUser, requireWorkspace, schedulesRouter);
+app.use('/api/schedules', requireAuthenticatedUser, requireWorkspace, schedulesRouter);
+
+// Protected Business Routes (enforcing workspace authorization)
+app.use('/api/businesses', requireAuthenticatedUser, requireWorkspace, businessesRouter);
+app.use('/api/businesses', requireAuthenticatedUser, requireWorkspace, searchRunsRouter);
+app.use('/api/businesses', requireAuthenticatedUser, requireWorkspace, competitorsRouter);
+app.use('/api/businesses', requireAuthenticatedUser, requireWorkspace, keywordsRouter);
+
+// Protected Competitor Routes
+app.use('/api/competitors', requireAuthenticatedUser, requireWorkspace, competitorsRouter);
+
+// Protected Keyword Routes
+app.use('/api/keywords', requireAuthenticatedUser, requireWorkspace, keywordsRouter);
+
+// Protected Analysis Routes
+app.use('/api/businesses', requireAuthenticatedUser, requireWorkspace, analysisRouter);
+app.use('/api/analysis', requireAuthenticatedUser, requireWorkspace, analysisRouter);
+
+// Protected Reports & Recommendations Routes
+app.use('/api/businesses', requireAuthenticatedUser, requireWorkspace, reportsRouter);
+app.use('/api/reports', requireAuthenticatedUser, requireWorkspace, reportsRouter);
+app.use('/api/recommendations', requireAuthenticatedUser, requireWorkspace, reportsRouter);
+
+// Protected Search Run & Results inspection
+app.use('/api/searches', requireAuthenticatedUser, requireWorkspace, searchRunsRouter);
+
+// Protected Job Polling Routes
+app.use('/api/jobs', requireAuthenticatedUser, jobsRouter);
+
+// Start BullMQ Workers in non-test environments
+if (env.NODE_ENV !== 'test') {
+  startWebsiteAnalysisWorker();
+  startResearchWorker();
+  startReportWorker();
+  startStaleCheckWorker();
+  syncAllWorkspaceSchedules().catch((err) => {
+    console.error('Failed to initialize workspace schedules:', err);
+  });
+  console.log('👷 All BullMQ Workers & Repeatable Schedulers initialized');
+}
+
+app.listen(env.PORT, () => {
+  console.log(`🚀 Serp-Scout API listening on http://localhost:${env.PORT}`);
+});
+
+export default app;

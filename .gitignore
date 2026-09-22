@@ -1,0 +1,47 @@
+# ─── Environment files ────────────────────────
+.env
+.env.local
+.env.*.local
+# Allow example files
+!.env.example
+
+# ─── Dependencies ─────────────────────────────
+node_modules/
+
+# ─── Build outputs ────────────────────────────
+dist/
+build/
+.next/
+out/
+
+# ─── Turborepo ────────────────────────────────
+.turbo/
+
+# ─── Drizzle ──────────────────────────────────
+drizzle/
+
+# ─── Logs ─────────────────────────────────────
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# ─── Testing ──────────────────────────────────
+coverage/
+playwright-report/
+test-results/
+
+# ─── OS ───────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── Editor ───────────────────────────────────
+.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# ─── Misc ─────────────────────────────────────
+*.tsbuildinfo
+.vercel

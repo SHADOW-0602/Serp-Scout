@@ -1,0 +1,108 @@
+import { Response, NextFunction } from 'express';
+import { eq, and } from 'drizzle-orm';
+import { db, users, workspaces } from '../db/index.js';
+import { AuthenticatedRequest } from './auth.js';
+
+export interface WorkspaceRequest extends AuthenticatedRequest {
+  workspace?: {
+    id: string;
+    name: string;
+    ownerId: string;
+    monthlyQuota: number;
+    usedQuota: number;
+    timezone: string;
+  };
+  userRole?: string;
+}
+
+export async function requireWorkspace(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const userId = req.auth?.userId;
+  if (!userId) {
+    res.status(401).json({
+      success: false,
+      error: { code: 'UNAUTHORIZED', message: 'User not authenticated' },
+    });
+    return;
+  }
+
+  // Check header or query parameter for workspace ID
+  const headerWsId = (req.headers['x-workspace-id'] as string) || (req.query.workspaceId as string);
+
+  try {
+    if (headerWsId) {
+      // Verify user membership in this explicit workspace
+      const userRecord = await db
+        .select()
+        .from(users)
+        .where(and(eq(users.id, userId), eq(users.workspaceId, headerWsId)))
+        .limit(1);
+
+      if (userRecord.length === 0) {
+        res.status(403).json({
+          success: false,
+          error: {
+            code: 'FORBIDDEN',
+            message: 'You do not have access to this workspace',
+          },
+        });
+        return;
+      }
+
+      const ws = await db
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.id, headerWsId))
+        .limit(1);
+
+      if (ws.length === 0) {
+        res.status(404).json({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Workspace not found' },
+        });
+        return;
+      }
+
+      const wsReq = req as WorkspaceRequest;
+      wsReq.workspace = ws[0];
+      wsReq.userRole = userRecord[0].role;
+      return next();
+    }
+
+    // Default: find the user's first/primary workspace
+    const userRecords = await db
+      .select({
+        userRole: users.role,
+        workspace: workspaces,
+      })
+      .from(users)
+      .innerJoin(workspaces, eq(users.workspaceId, workspaces.id))
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (userRecords.length === 0) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'WORKSPACE_NOT_FOUND',
+          message: 'No workspace found for this user. Please create one.',
+        },
+      });
+      return;
+    }
+
+    const wsReq = req as WorkspaceRequest;
+    wsReq.workspace = userRecords[0].workspace;
+    wsReq.userRole = userRecords[0].userRole;
+    next();
+  } catch (error) {
+    console.error('Error verifying workspace access:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to verify workspace' },
+    });
+  }
+}
