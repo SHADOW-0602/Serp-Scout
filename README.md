@@ -3,7 +3,7 @@
 <!-- HEADER STYLE: CLASSIC -->
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/PKief/vscode-material-icon-theme/main/icons/radar.svg" width="100" height="100" alt="Serp-Scout Logo"/>
+<img src="./assets/logo.svg" width="100" height="100" alt="Serp-Scout Logo"/>
 
 # <code>SERP-SCOUT</code>
 
