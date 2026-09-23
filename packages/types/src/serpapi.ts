@@ -8,6 +8,7 @@ export interface NormalizedSearchResult {
   snippet?: string;
   sitelinks?: Array<{ title: string; link: string }>;
   serpFeatures?: string[];
+  isAd?: boolean;
   raw?: Record<string, unknown>;
 }
 

@@ -1,13 +1,13 @@
 <div id="top">
 
-<!-- HEADER STYLE: CLASSIC -->
+<!-- HEADER STYLE: CLASSIC / MODERN -->
 <div align="center">
 
-<img src="./assets/logo.svg" width="100" height="100" alt="Serp-Scout Logo"/>
+<img src="./assets/logo.svg" width="110" height="110" alt="Serp-Scout Logo"/>
 
 # <code>SERP-SCOUT</code>
 
-<em>AI-Powered Competitive Intelligence & SEO Action Engine for Small Businesses</em>
+<em>Autonomous Competitive Intelligence & SEO Action Engine for Local Businesses</em>
 
 <p><strong>"Success is measured by real business outcomes rather than a 'visibility score.'"</strong></p>
 
@@ -39,6 +39,7 @@
 - [Key Features](#-key-features)
 - [System Architecture](#-system-architecture)
 - [Monorepo Structure](#-monorepo-structure)
+- [Project Index & Modules](#-project-index--modules)
 - [Agent Roster](#-agent-roster)
 - [Getting Started](#-getting-started)
   - [Prerequisites](#prerequisites)
@@ -53,8 +54,8 @@
 
 ## 💡 Overview
 
-Small business owners don't need vanity SEO scores (Domain Authority, Page Authority, or arbitrary "Visibility Indexes"). They need to know:
-1. **Who is taking revenue and appointments from them right now?**
+Small business owners don't need vanity SEO metrics (Domain Authority, Page Authority, or arbitrary "Visibility Indexes"). They need to know:
+1. **Who is taking revenue, patients, or appointments from them right now?**
 2. **Where are the concrete gaps in services, location coverage, and keyword queries?**
 3. **What specific, prioritized actions (maximum 3 to 5) should they take this week to drive real calls and bookings?**
 
@@ -64,18 +65,16 @@ Small business owners don't need vanity SEO scores (Domain Authority, Page Autho
 
 ## 🚀 Key Features
 
-* **Autonomous Website Extraction & Enrichment**: Securely scrapes a business's homepage, extracts title/meta tags, headings, content text, detected services, and schema markup, then uses Groq LLaMA 3 to extract structured business profiles.
-* **SerpApi Multi-Engine Search Layer**: Normalizes Google Organic, Google Maps (Local 3-Pack), People Also Ask (PAA), Related Searches, and Google News results.
-* **Competitor Discovery & Heuristic Scoring**: Uncovers true local business competitors without requiring the owner to know rival names in advance. Classifies domains as `direct_competitor`, `indirect_competitor`, or `directory_aggregator` with human-in-the-loop review.
+* **Autonomous Website Extraction & Enrichment**: Scrapes business homepages, parses metadata, headings, detected services, and schema markup, then uses Groq LLaMA 3 to extract structured business profiles.
+* **SerpApi + Tavily Hybrid Search Layer**: Normalizes Google Organic, Google Maps (Local 3-Pack), People Also Ask (PAA), Related Searches, and Google News results with token-conserving multi-query sweep fallbacks.
+* **Location Autocomplete & Canonical Disambiguation**: Resolves city, postal code, and clinic queries into verified geographical search parameters via SerpApi's `locations.json` registry.
+* **Google Business Profile (GBP) 4-Point Live Audit Protocol**: Live audit engine evaluating Google 3-Pack placement, Canonical NAP & Domain Linkage, Voice of Customer review velocity, and Territory Radius Targeting with 12 interactive checklist tasks and progress tracking.
+* **Competitor Discovery & Threat Matrix**: Automatically discovers local business rivals without requiring the owner to know competitor names in advance. Classifies domains as `direct_competitor`, `indirect_competitor`, or `directory_aggregator` with human-in-the-loop review.
 * **Opportunity Radar & Keyword Ranking Deltas**: Discovers high-conversion keywords, scores them using a multi-factor formula (Business Relevance, Commercial Intent, Ranking Potential, Local Market Fit, Content Gap), and calculates historical rank deltas ($\Delta \text{rank}$).
-* **Multi-Agent Deep Intelligence**:
-  - **Content Gap Agent**: Compares business offerings against competitor pages.
-  - **Messaging & Positioning Agent**: Contrasts value propositions and call-to-actions.
-  - **Review & Reputation Agent**: Synthesizes ratings, review velocity, and customer sentiment.
-  - **Local SERP Presence Agent**: Evaluates Google Maps presence, address consistency, and citations.
-  - **News & External Signals Agent**: Tracks local PR, announcements, and seasonal trends.
-* **Action-Oriented Recommendation Engine**: Synthesizes all agent insights into 3 to 5 concrete, prioritized actions. Every action links directly to source evidence rows in the database.
-* **Executive PDF Generation**: Headless Puppeteer engine renders pixel-perfect, publication-ready PDF reports with opportunity summaries and evidence appendixes.
+* **Action-Oriented Recommendation Engine**: Groq LLaMA 3 synthesizes all competitive evidence into 3 to 5 prioritized actions (P0 to P3). Each recommendation includes 3–4 practical sub-task check-off steps with real-time percentage progress bars.
+* **Tangible Outcome & Win Tracker**: Correlates completed recommendations with subsequent SERP rank sweeps to compute exact position improvements (e.g. `Climbed +4 spots for "dentist near me"`).
+* **Client & White-Label Web Sharing**: Generates tokenized, read-only public links (`/shared/[token]`) for external stakeholders with dual-view mode toggles (Executive vs Specialist view) and PDF print styling.
+* **Triggered Emergency Market Shift Alerts**: Out-of-cycle flash alerts detecting Google 3-Pack displacement, sharp rank drops ($\ge 3$ spots), competitor sponsored Google Ads campaigns, and negative review spikes, paired with transactional email alerts.
 * **Automated Scheduling & Notifications**: BullMQ repeat queues running on Upstash Redis TLS dispatch daily, weekly, or monthly scheduled runs, perform background stale data checks, and deliver single-notification transactional emails via Resend.
 * **Enterprise Multi-Tenant Security**: Zero cross-workspace data leakage, strict monthly search quotas (HTTP 429), and robust SSRF filtering preventing internal network probes.
 
@@ -88,200 +87,262 @@ flowchart TD
     subgraph Client["Client Tier (apps/web)"]
         UI["Next.js 14 App Router\n(Tailwind CSS + SWR)"]
         ClerkAuth["Clerk Auth\n(Session & Multi-Tenant JWT)"]
+        PublicShare["Client Share Portal\n(/shared/[token])"]
     end
 
     subgraph API["Backend Tier (apps/api)"]
         Express["Express 4 REST API"]
         Middleware["Auth & Quota Middleware\n(Tenant Scoping & 429 Limiter)"]
+        MarketShift["Market Shift Engine\n(Emergency Displacement Alerts)"]
         PuppeteerEngine["Puppeteer PDF Service\n(Executive Report Rendering)"]
         ResendService["Resend Email Service\n(Transactional Delivery)"]
     end
 
     subgraph Worker["Queue & Jobs Tier"]
-        BullMQ["BullMQ Scheduler & Workers\n(Daily / Weekly / Monthly / Stale)"]
+        BullMQ["BullMQ Workers\n(Research, Reports, Stale Checks)"]
+        Redis["Upstash Redis TLS\n(Task State & Rate Limiting)"]
     end
 
-    subgraph Agents["Autonomous Intelligence Tier (packages/agents)"]
-        LangGraph["LangGraph StateGraph\nOrchestrator"]
-        SiteAnalyzer["Website Analyzer\n(Cheerio + SSRF Filter)"]
-        GroqLLM["Groq Cloud SDK\n(LLaMA-3.3-70b-versatile)"]
-        AnalysisNodes["Multi-Agent Nodes\n(Content Gap, Messaging, Reviews, News)"]
-        RecEngine["Recommendation Engine\n(Top 3-5 Action Synthesis)"]
+    subgraph AI["AI & Search Tier"]
+        Groq["Groq LLaMA 3 Engine\n(Synthesis, Recommendations, Audits)"]
+        SerpApi["SerpApi Engine\n(Google Organic, Maps, News, Locations)"]
+        Tavily["Tavily Search Engine\n(Parallel Sweep Backfill)"]
     end
 
-    subgraph External["External Services & Storage"]
-        NeonDB[("Neon Serverless PostgreSQL\n(Drizzle ORM - 16 Tables)")]
-        UpstashRedis[("Upstash Redis\n(TLS Queues)")]
-        SerpApi["SerpApi\n(Google Web, Maps & News)"]
-        ResendAPI["Resend API\n(Email Delivery)"]
+    subgraph DB["Database Tier (packages/db)"]
+        Neon["Neon Serverless PostgreSQL\n(Drizzle ORM — 18 Relational Tables)"]
     end
 
-    UI -->|HTTPS / REST| Express
-    ClerkAuth -->|Bearer JWT| Middleware
-    Express --> Middleware
-    Middleware --> NeonDB
-    Express --> PuppeteerEngine
+    UI -->|HTTPS / API Requests| Middleware
+    PublicShare -->|Public Token Access| Express
+    Middleware --> Express
+    Express --> Neon
+    Express --> MarketShift
     Express --> BullMQ
-    BullMQ <--> UpstashRedis
-    BullMQ --> LangGraph
-    LangGraph --> SiteAnalyzer
-    LangGraph --> SerpApi
-    LangGraph --> GroqLLM
-    LangGraph --> AnalysisNodes
-    AnalysisNodes --> RecEngine
-    RecEngine --> NeonDB
-    BullMQ --> ResendService
-    ResendService --> ResendAPI
+    BullMQ --> Redis
+    BullMQ --> AI
+    Express --> AI
+    Express --> PuppeteerEngine
+    Express --> ResendService
 ```
 
 ---
 
 ## 📦 Monorepo Structure
 
+```sh
+└── serp-scout/
+    ├── apps/
+    │   ├── api/                       # Express 4 backend server & background jobs
+    │   │   ├── src/
+    │   │   │   ├── config/            # Environment parsing & validation (Zod)
+    │   │   │   ├── db/                # Neon database client & schema exports
+    │   │   │   ├── jobs/              # BullMQ queue definitions, workers & schedulers
+    │   │   │   ├── middleware/        # Clerk auth, workspace isolation, rate limiting
+    │   │   │   ├── routes/            # REST API endpoints (businesses, reports, searches)
+    │   │   │   └── services/          # Market shift, PDF generation, notification services
+    │   │   └── package.json
+    │   └── web/                       # Next.js 14 App Router web application
+    │       ├── src/
+    │       │   ├── app/               # Routes (dashboard, competitors, keywords, local, reports, shared)
+    │       │   ├── components/        # UI components (sidebar, navigation, cards, badges)
+    │       │   ├── lib/               # API client, utility functions
+    │       │   └── middleware.ts      # Clerk authentication middleware with public route rules
+    │       └── package.json
+    ├── packages/
+    │   ├── agents/                    # Multi-agent intelligence & recommendation pipelines
+    │   │   ├── src/
+    │   │   │   ├── competitor-discovery/  # Extraction, profiler, threat matrix
+    │   │   │   ├── opportunity-radar/     # Keyword scoring formula, intent mapping
+    │   │   │   ├── recommendation-engine/ # Prioritized P0-P3 action generation with sub-tasks
+    │   │   │   └── report-generator/      # Executive summaries & visibility change builder
+    │   ├── db/                        # Drizzle ORM schema, relations & Neon connection
+    │   │   ├── src/schema/            # 18 relational PostgreSQL table definitions
+    │   │   └── drizzle.config.ts
+    │   ├── serpapi/                   # SerpApi & Tavily API integration client
+    │   │   └── src/                   # Google Organic, Maps, News & normalizers
+    │   └── types/                     # Shared TypeScript interfaces across all packages
+    ├── docker-compose.yml             # Local Redis container setup
+    ├── package.json                   # Monorepo scripts & dependencies
+    ├── pnpm-workspace.yaml            # PNPM workspace configuration
+    └── turbo.json                     # Turborepo build pipeline configuration
 ```
-Serp-Scout/
-├── apps/
-│   ├── web/                    # Next.js 14 App Router, Tailwind CSS, Clerk Auth
-│   │   ├── src/app/(app)/      # Authenticated routes (Dashboard, Competitors, Keywords, Reports, Settings)
-│   │   └── src/app/(auth)/     # Sign-in & Sign-up flows
-│   └── api/                    # Express REST API, Puppeteer, Resend, BullMQ Workers
-│       ├── src/routes/         # Workspaces, Businesses, Competitors, Keywords, Reports, Settings
-│       ├── src/services/       # PDF generation, Email notifications, Ranking calculations
-│       └── src/jobs/           # BullMQ queues, Scheduler & Workers
-│
-├── packages/
-│   ├── db/                     # Drizzle ORM schema (16 tables) & Neon Postgres client
-│   ├── serpapi/                # SerpApi client for Google Search, Maps, and News
-│   ├── agents/                 # LangGraph orchestrator, Groq LLaMA 3 agents, SSRF guardrails
-│   └── types/                  # Shared TypeScript types, schemas & Zod validators
-│
-├── package.json                # Turborepo root workspace configuration
-└── turbo.json                  # Turborepo build cache pipelines
-```
+
+---
+
+## 🔍 Project Index & Modules
+
+<details>
+<summary><b>⦿ apps/api (Express Backend & Workers)</b></summary>
+<blockquote>
+
+| Module / File | Responsibility |
+| :--- | :--- |
+| `src/index.ts` | Server entrypoint, CORS, Clerk auth mounting, and public shared router registration. |
+| `src/routes/reports.ts` | Report CRUD, sub-task checklist toggles, outcome metrics, and tokenized share links. |
+| `src/routes/businesses.ts` | Business management, location autocomplete (`/locations/search`), and service profiles. |
+| `src/routes/search-runs.ts` | Multi-engine search trigger (Google, Maps, News) with quota and cost tracking. |
+| `src/services/market-shift.service.ts` | Live detection for 3-Pack displacement, rank drops, competitor ads, and review spikes. |
+| `src/services/pdf.service.ts` | Headless Chromium Puppeteer engine rendering pixel-perfect executive PDF briefings. |
+| `src/services/notification.service.ts` | Resend transactional email service with weekly briefs and emergency market alerts. |
+| `src/jobs/workers/` | BullMQ background workers (`research.worker.ts`, `report.worker.ts`, `stale-check.worker.ts`). |
+
+</blockquote>
+</details>
+
+<details>
+<summary><b>⦿ apps/web (Next.js 14 Frontend)</b></summary>
+<blockquote>
+
+| Module / File | Responsibility |
+| :--- | :--- |
+| `src/app/(app)/reports/page.tsx` | Executive reports dashboard with sub-task checklists, outcome tracking, and share modal. |
+| `src/app/shared/[token]/page.tsx` | Public client-facing report portal with Executive and Specialist view toggles. |
+| `src/app/(app)/local/page.tsx` | Local SEO command center: Google Maps radar, review sentiment, and 4-Point Live Audit. |
+| `src/app/(app)/competitors/page.tsx` | Competitor discovery directory with threat matrix and human-in-the-loop review. |
+| `src/app/(app)/keywords/page.tsx` | Keyword Opportunity Radar with multi-factor scoring and ranking trajectory tracking. |
+| `src/app/(app)/onboarding/page.tsx` | Instant onboarding flow with website extraction and location autocomplete. |
+| `src/middleware.ts` | Clerk security middleware with protected application routes and public share access. |
+
+</blockquote>
+</details>
+
+<details>
+<summary><b>⦿ packages (Shared Monorepo Libraries)</b></summary>
+<blockquote>
+
+| Package | Responsibility |
+| :--- | :--- |
+| `@serp-scout/agents` | Groq LLaMA 3 multi-agent system (Competitor Discovery, Content Gaps, Recommendations). |
+| `@serp-scout/db` | Neon Serverless PostgreSQL client with 18 Drizzle ORM relational tables. |
+| `@serp-scout/serpapi` | Normalization layer for SerpApi (Web, Maps, News, Locations) and Tavily search backfills. |
+| `@serp-scout/types` | Centralized TypeScript contracts for search, agents, recommendations, and reports. |
+
+</blockquote>
+</details>
 
 ---
 
 ## 🤖 Agent Roster
 
-| Agent / Engine | Layer | Technology | Primary Business Responsibility |
-|---|---|---|---|
-| **Website Analyzer** | `@serp-scout/agents` | Cheerio + Groq LLaMA 3 | Scrapes target URL safely and extracts structured services, categories, and contact info. |
-| **SSRF Guardrail** | `@serp-scout/agents` | `dns.lookup` + IP Validator | Blocks localhost, cloud metadata (169.254.169.254), RFC1918 subnets, and non-HTTP protocols. |
-| **SERP Query Planner** | `@serp-scout/agents` | Template Engine | Generates targeted local query combinations across services and geographic modifiers. |
-| **SERP Runner** | `@serp-scout/serpapi` | SerpApi Adapter | Executes searches, stores raw payloads, updates monthly quotas, and handles transient errors. |
-| **Competitor Classifier** | `@serp-scout/agents` | Groq Structured Output | Differentiates true direct competitors from Yelp/YellowPages directories and local portals. |
-| **Opportunity Scorer** | `@serp-scout/agents` | Mathematical Formula | Calculates keyword opportunity scores ($0\text{--}100$) balancing commercial value and ranking potential. |
-| **Content Gap Agent** | `@serp-scout/agents` | Groq LLaMA 3 | Pinpoints missing high-converting service pages present on rival websites. |
-| **Messaging Agent** | `@serp-scout/agents` | Groq LLaMA 3 | Discovers competitor guarantees, free consultation offers, and pricing transparency. |
-| **Review Sentiment Agent** | `@serp-scout/agents` | Groq LLaMA 3 | Identifies recurring competitor weaknesses and customer pain points. |
-| **Local SERP Radar** | `@serp-scout/agents` | Maps Adapter | Analyzes Google Map Pack rankings, reviews count, and local citation strength. |
-| **Recommendation Engine** | `@serp-scout/agents` | Groq Structured Output | Synthesizes all intelligence into 3 to 5 evidence-backed, revenue-focused action items. |
-| **Report Generator** | `apps/api` | Puppeteer + HTML/CSS | Renders publication-ready PDF reports with evidence appendices. |
-| **Notification Service** | `apps/api` | Resend SDK | Sends deduplicated executive summaries via transactional email. |
+| Agent Name | Engine | Responsibility |
+| :--- | :--- | :--- |
+| **Website Extractor** | `Cheerio` + `Groq LLaMA 3` | Ingests business URL, strips boilerplates, detects core services, and extracts structured schema. |
+| **Competitor Discovery Agent** | `SerpApi` + `Heuristic Scorer` | Discovers organic and local 3-Pack rivals, scores overlap, and filters non-competitor directories. |
+| **Content Gap Agent** | `Groq LLaMA 3` | Discovers missing commercial and transactional topics where competitors capture high-intent searches. |
+| **Messaging & Positioning Agent** | `Groq LLaMA 3` | Analyzes competitor value propositions, guarantees, pricing cues, and call-to-actions. |
+| **Review & Voice of Customer Agent** | `Groq LLaMA 3` | Evaluates sentiment patterns, customer friction points, and recurring complaints for copy angles. |
+| **GBP Live Audit Protocol** | `Rule Engine` + `SerpApi` | Audits 3-Pack rank, domain linkage, review velocity, and hyper-local geographical radius targeting. |
+| **Recommendation Engine** | `Groq LLaMA 3` | Synthesizes all intelligence into 3–5 high-ROI actions with step-by-step implementation sub-tasks. |
+| **Market Shift Engine** | `Heuristic Classifier` | Detects emergency market shifts (3-Pack displacement, competitor ad campaigns, review surges). |
 
 ---
 
-## 💻 Getting Started
+## ⚡ Getting Started
 
 ### Prerequisites
-* **Node.js**: `v20.0.0` or higher
-* **Package Manager**: `pnpm` (`v9.0.0` or higher)
-* **PostgreSQL**: Neon Serverless PostgreSQL instance
-* **Redis**: Upstash Redis instance with TLS support
-* **External API Keys**:
-  - [Clerk](https://clerk.dev) (Authentication)
-  - [Groq](https://console.groq.com) (LLaMA 3 Inference)
-  - [SerpApi](https://serpapi.com) (Search Result Scraping)
-  - [Resend](https://resend.com) (Transactional Email Delivery)
+
+- **Node.js**: `v20.x` or higher
+- **PNPM**: `v9.x` or higher
+- **Docker**: For running local Redis (or an [Upstash Redis](https://upstash.com) instance)
+- **API Credentials**:
+  - [Clerk](https://clerk.com) (Authentication & user management)
+  - [Neon](https://neon.tech) (Serverless PostgreSQL)
+  - [Groq](https://groq.com) (High-speed LLaMA 3 inference)
+  - [SerpApi](https://serpapi.com) (Search engine results & Google Maps)
+  - [Tavily](https://tavily.com) (Fast multi-query web sweep search)
+  - [Resend](https://resend.com) (Transactional email notifications)
 
 ### Environment Configuration
 
-#### Backend API (`apps/api/.env`)
-```bash
-PORT=4000
-NODE_ENV=development
-DATABASE_URL="postgresql://[user]:[password]@[endpoint].neon.tech/neondb?sslmode=require"
-REDIS_URL="rediss://default:[token]@[endpoint].upstash.io:6379"
-CLERK_SECRET_KEY="sk_test_..."
-CLERK_PUBLISHABLE_KEY="pk_test_..."
-CLERK_FRONTEND_API_URL="https://[subdomain].clerk.accounts.dev"
-SERPAPI_KEY="serpapi_key_..."
-GROQ_API_KEY="gsk_..."
-RESEND_API_KEY="re_..."
-EMAIL_FROM="onboarding@resend.dev"
-FRONTEND_URL="http://localhost:3000"
+Copy the example environment files and populate your API credentials:
+
+```sh
+# Configure backend API environment
+cp apps/api/.env.example apps/api/.env
+
+# Configure frontend web environment
+cp apps/web/.env.example apps/web/.env.local
 ```
 
-#### Frontend Web Application (`apps/web/.env.local`)
-```bash
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="pk_test_..."
-CLERK_SECRET_KEY="sk_test_..."
-NEXT_PUBLIC_API_URL="http://localhost:4000"
-NEXT_PUBLIC_CLERK_SIGN_IN_URL="/sign-in"
-NEXT_PUBLIC_CLERK_SIGN_UP_URL="/sign-up"
-NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL="/app"
-NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL="/onboarding"
+Key variables in `apps/api/.env`:
+
+```env
+NODE_ENV=development
+PORT=3001
+DATABASE_URL=postgresql://user:pass@ep-xyz.neon.tech/neondb?sslmode=require
+REDIS_URL=redis://localhost:6379
+CLERK_SECRET_KEY=sk_test_...
+CLERK_PUBLISHABLE_KEY=pk_test_...
+GROQ_API_KEY=gsk_...
+GROQ_MODEL=openai/gpt-oss-120b
+SERPAPI_KEY=...
+TAVILY_API_KEY=...
+RESEND_API_KEY=re_...
 ```
 
 ### Installation & Setup
 
-1. **Clone the repository and install dependencies:**
-   ```bash
+1. **Clone the repository:**
+   ```sh
    git clone https://github.com/SHADOW-0602/Serp-Scout.git
    cd Serp-Scout
+   ```
+
+2. **Install monorepo dependencies:**
+   ```sh
    pnpm install
    ```
 
-2. **Push database schema to Neon PostgreSQL:**
-   ```bash
-   pnpm --filter @serp-scout/db db:push
+3. **Start local Redis (if not using Upstash):**
+   ```sh
+   docker-compose up -d
+   ```
+
+4. **Verify database schema migrations:**
+   ```sh
+   pnpm --filter @serp-scout/db build
+   node packages/db/dist/migrate-upgrades.js
    ```
 
 ### Running the Applications
 
-1. **Start all services in development mode:**
-   ```bash
-   pnpm dev
-   ```
-   * **Web Application**: `http://localhost:3000`
-   * **Express API Server**: `http://localhost:4000`
+Start all applications in development mode simultaneously via Turborepo:
 
-2. **Build for production:**
-   ```bash
-   pnpm build
-   ```
+```sh
+pnpm dev
+```
+
+* **Frontend Web App**: [http://localhost:3000](http://localhost:3000)
+* **Backend API Server**: [http://localhost:3001](http://localhost:3001)
+* **API Health Check**: [http://localhost:3001/health](http://localhost:3001/health)
 
 ### Verification & Testing
- 
-Execute the automated integration test suites:
-```bash
-# Full E2E Journey, Security & Quota Verification
-pnpm --filter api exec tsx src/test-milestone9.ts
 
-# Automated Scheduling & Resend Notification Delivery
-pnpm --filter api exec tsx src/test-milestone8.ts
+Verify that all packages and applications compile cleanly:
 
-# Action Recommendation Engine & Dynamic PDF Export
-pnpm --filter api exec tsx src/test-milestone7.ts
+```sh
+# Build all packages & apps
+pnpm build
+
+# Typecheck the entire monorepo
+pnpm run typecheck
 ```
 
 ---
 
-## 🛡 Security & Compliance Guardrails
+## 🔒 Security & Compliance Guardrails
 
-* **Zero Client Secrets**: Third-party provider keys (`SERPAPI_KEY`, `GROQ_API_KEY`, `RESEND_API_KEY`) and database credentials are strictly isolated to the server-side runtime.
-* **Zero-Trust SSRF Protection**: All user-provided URLs undergo DNS resolution and IP validation before fetching. Connections to `localhost`, `127.0.0.1`, RFC1918 private subnets, and AWS/GCP instance metadata IP (`169.254.169.254`) are immediately rejected.
-* **Multi-Tenant Boundary Enforcement**: Every database query is scoped by `workspace_id`. Cross-workspace queries strictly return 0 records.
-* **Monthly Search Quota Limiter**: Automatic HTTP 429 enforcement with `Retry-After` prevents runaway costs on third-party APIs.
-* **Evidence Grounding Guarantee**: The AI recommendation engine is prohibited from generating advice without linking directly to confirmed `source_evidence` records.
+* **Tenant Isolation**: Every database query enforces multi-tenant boundary checks (`workspace_id` verification). Users can never view or modify data outside their authorized workspace.
+* **SSRF Protection**: Outgoing HTTP requests validate target IP addresses against private and internal subnets (`127.0.0.0/8`, `10.0.0.0/8`, `192.168.0.0/16`, AWS/GCP metadata endpoints `169.254.169.254`), preventing server-side request forgery attacks.
+* **Monthly Quota Enforcement**: Atomic quota counters reject search requests exceeding the workspace's monthly limit with HTTP 429 (`QUOTA_EXCEEDED`).
+* **Tokenized Public Sharing**: Public shared reports use high-entropy cryptographic tokens with automatic 30-day expiration and 1-click revocation.
+* **Deduplicated Transactional Alerts**: Notifications and emergency market alerts use 24-hour deduplication hashing to ensure stakeholders are never spammed.
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+Distributed under the **MIT License**. See [`LICENSE`](./LICENSE) for more information.
 
-<div align="center">
-  <br>
-  <sub>Built with care for small business owners everywhere.</sub>
-</div>
+<p align="right"><a href="#top">⬆ Back to Top</a></p>

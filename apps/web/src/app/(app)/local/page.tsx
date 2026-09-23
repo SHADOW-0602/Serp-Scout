@@ -19,6 +19,14 @@ import {
   PhoneCall,
   Flame,
   ArrowRight,
+  Loader2,
+  Camera,
+  Tags,
+  Award,
+  CheckSquare,
+  Square,
+  RefreshCw,
+  ChevronRight,
 } from 'lucide-react';
 
 interface BusinessSummary {
@@ -81,6 +89,84 @@ export default function LocalSeoPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'map_pack' | 'reviews' | 'checklist'>('map_pack');
 
+  // Location Autocomplete Search State for Local SEO
+  const [locationSuggestions, setLocationSuggestions] = useState<Array<{
+    id: string;
+    name: string;
+    city?: string;
+    address?: string;
+    category?: string;
+    type: 'location' | 'place';
+  }>>([]);
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
+  const locationDebounceTimer = React.useRef<NodeJS.Timeout | null>(null);
+
+  // Interactive Checklist Action State per Business
+  const [checklistCompleted, setChecklistCompleted] = useState<Record<string, boolean>>({});
+
+  const toggleChecklistItem = (itemKey: string) => {
+    setChecklistCompleted((prev) => {
+      const next = { ...prev, [itemKey]: !prev[itemKey] };
+      try {
+        if (selectedBizId) {
+          localStorage.setItem(`local_seo_checklist_${selectedBizId}`, JSON.stringify(next));
+        }
+      } catch {}
+      return next;
+    });
+  };
+
+  const autoTriggeredMapsRef = React.useRef<Set<string>>(new Set());
+  const autoTriggeredReviewsRef = React.useRef<Set<string>>(new Set());
+
+  // Restore saved results from localStorage on business change
+  useEffect(() => {
+    if (!selectedBizId || typeof window === 'undefined') return;
+
+    // 1. Instant cache retrieval for Maps
+    try {
+      const cachedMaps = localStorage.getItem(`local_seo_maps_${selectedBizId}`);
+      if (cachedMaps) {
+        const parsed = JSON.parse(cachedMaps);
+        if (parsed.results && parsed.results.length > 0) {
+          setMapResults(parsed.results);
+          setScanTimestamp(parsed.timestamp || null);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to read local maps cache:', e);
+    }
+
+    // 2. Instant cache retrieval for Reviews
+    try {
+      const cachedReviews = localStorage.getItem(`local_seo_reviews_${selectedBizId}`);
+      if (cachedReviews) {
+        const parsed = JSON.parse(cachedReviews);
+        if (parsed && parsed.themes) {
+          setReviewAnalysis(parsed);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to read local reviews cache:', e);
+    }
+
+    // 3. Instant cache retrieval for Checklist
+    try {
+      const cachedChecklist = localStorage.getItem(`local_seo_checklist_${selectedBizId}`);
+      if (cachedChecklist) {
+        const parsed = JSON.parse(cachedChecklist);
+        if (parsed && typeof parsed === 'object') {
+          setChecklistCompleted(parsed);
+        }
+      } else {
+        setChecklistCompleted({});
+      }
+    } catch (e) {
+      console.error('Failed to read local checklist cache:', e);
+    }
+  }, [selectedBizId]);
+
   // Load businesses
   useEffect(() => {
     async function load() {
@@ -105,8 +191,57 @@ export default function LocalSeoPage() {
     load();
   }, [getToken]);
 
-  // Execute Live Google Maps 3-Pack Scan
-  const handleScanMaps = async (e?: React.FormEvent) => {
+  const handleLocationInputChange = (val: string) => {
+    setLocation(val);
+    setShowLocationDropdown(true);
+
+    if (locationDebounceTimer.current) {
+      clearTimeout(locationDebounceTimer.current);
+    }
+
+    if (!val || val.trim().length < 2) {
+      setLocationSuggestions([]);
+      setIsSearchingLocation(false);
+      return;
+    }
+
+    setIsSearchingLocation(true);
+    locationDebounceTimer.current = setTimeout(async () => {
+      try {
+        const token = await getToken();
+        if (!token) return;
+        const res = await apiClient<Array<{
+          id: string;
+          name: string;
+          city?: string;
+          address?: string;
+          category?: string;
+          type: 'location' | 'place';
+        }>>(`/api/businesses/locations/search?q=${encodeURIComponent(val.trim())}`, { token });
+        setLocationSuggestions(res || []);
+      } catch (err) {
+        console.error('Location search error:', err);
+      } finally {
+        setIsSearchingLocation(false);
+      }
+    }, 350);
+  };
+
+  const handleSelectLocation = (item: {
+    name: string;
+    city?: string;
+    address?: string;
+    category?: string;
+  }) => {
+    const resolvedCity = item.city || item.name;
+    setLocation(resolvedCity);
+    const selectedBiz = businesses.find((b) => b.id === selectedBizId);
+    setQuery(`${selectedBiz?.industry || 'Services'} in ${resolvedCity}`);
+    setShowLocationDropdown(false);
+  };
+
+  // Execute Live Google Maps 3-Pack Scan (or refresh)
+  const handleScanMaps = useCallback(async (e?: React.FormEvent, forceRefresh = false) => {
     if (e) e.preventDefault();
     if (!selectedBizId || !query.trim()) return;
 
@@ -132,90 +267,93 @@ export default function LocalSeoPage() {
         }),
       });
 
+      const nowTime = new Date().toLocaleTimeString();
       if (res.results && res.results.length > 0) {
         setMapResults(res.results);
+        setScanTimestamp(nowTime);
+        // Persist to localStorage to save API calls on future visits
+        try {
+          localStorage.setItem(
+            `local_seo_maps_${selectedBizId}`,
+            JSON.stringify({ results: res.results, timestamp: nowTime })
+          );
+        } catch (storageErr) {
+          console.error('Could not save maps to localStorage:', storageErr);
+        }
       } else {
-        // Mock fallback if SERP API key quota or test sandbox
-        setMapResults([
-          {
-            id: 'map-1',
-            rank: 1,
-            title: `${businesses.find((b) => b.id === selectedBizId)?.name || 'Local Flagship'} (HQ)`,
-            url: businesses.find((b) => b.id === selectedBizId)?.websiteUrl || 'https://example.com',
-            domain: 'local-clinic.com',
-            rating: '4.9',
-            reviewCount: 142,
-            locationText: `${location || 'Downtown Metro Area'} • Open until 7:00 PM`,
-            snippet: 'Top-rated provider with verified Google Business Profile and emergency appointments.',
-          },
-          {
-            id: 'map-2',
-            rank: 2,
-            title: 'Premier Metro Competitor',
-            url: 'https://competitor-metro.com',
-            domain: 'competitor-metro.com',
-            rating: '4.7',
-            reviewCount: 98,
-            locationText: `${location || 'Central District'} • Open 24/7`,
-            snippet: 'Established regional clinic specializing in emergency local response and walk-ins.',
-          },
-          {
-            id: 'map-3',
-            rank: 3,
-            title: 'Apex Regional Specialists',
-            url: 'https://apex-regional.com',
-            domain: 'apex-regional.com',
-            rating: '4.5',
-            reviewCount: 64,
-            locationText: `${location || 'Westside Corridor'} • Open until 6:00 PM`,
-            snippet: 'Multi-location network with heavy citation density and strong directory presence.',
-          },
-        ]);
+        setMapResults([]);
+        setScanTimestamp(nowTime);
       }
-      setScanTimestamp(new Date().toLocaleTimeString());
     } catch (err: any) {
       console.error('Maps scan error:', err);
-      // If quota or network failure, provide graceful fallback demo for review
-      setMapResults([
-        {
-          id: 'map-demo-1',
-          rank: 1,
-          title: `${businesses.find((b) => b.id === selectedBizId)?.name || 'Your Business'} - Verified Profile`,
-          url: businesses.find((b) => b.id === selectedBizId)?.websiteUrl || 'https://example.com',
-          domain: 'yoursite.com',
-          rating: '4.9',
-          reviewCount: 128,
-          locationText: `${location || 'Downtown'} • 0.8 mi`,
-          snippet: 'Featured in Google Maps 3-Pack for high search intent keywords.',
-        },
-        {
-          id: 'map-demo-2',
-          rank: 2,
-          title: 'Prime Competitor Care',
-          url: 'https://prime-care.example',
-          domain: 'prime-care.example',
-          rating: '4.6',
-          reviewCount: 94,
-          locationText: `${location || 'Downtown'} • 1.4 mi`,
-          snippet: 'Direct rival with active review acquisition velocity.',
-        },
-        {
-          id: 'map-demo-3',
-          rank: 3,
-          title: 'Valley Service Group',
-          url: 'https://valley-group.example',
-          domain: 'valley-group.example',
-          rating: '4.4',
-          reviewCount: 71,
-          locationText: `${location || 'East Suburbs'} • 2.1 mi`,
-          snippet: 'Strong local presence, lacks online booking integration.',
-        },
-      ]);
-      setScanTimestamp(new Date().toLocaleTimeString());
+      setError(err.message || 'Google Maps scan failed. Please check your API keys and try again.');
+      setMapResults([]);
     } finally {
       setScanning(false);
     }
-  };
+  }, [selectedBizId, query, location, getToken]);
+
+  // Load existing search history from DB or auto-trigger initial scan
+  useEffect(() => {
+    if (!selectedBizId || loadingBiz) return;
+
+    let isMounted = true;
+
+    async function loadDbHistoryOrAutoScan() {
+      try {
+        const token = await getToken();
+        if (!token) return;
+
+        // Check if we already have map results loaded from cache
+        if (mapResults.length > 0) return;
+
+        // Check backend DB for previous search runs for this business
+        const runs = await apiClient<any[]>(`/api/businesses/${selectedBizId}/searches?limit=10`, { token });
+        const mapsRun = runs.find((r) => r.searchType === 'google_maps' && r.status === 'completed');
+
+        if (mapsRun && isMounted) {
+          const runDetails = await apiClient<any>(`/api/searches/run/${mapsRun.id}`, { token });
+          if (runDetails?.results && runDetails.results.length > 0 && isMounted) {
+            const formattedResults: MapResultItem[] = runDetails.results.map((r: any) => ({
+              id: r.id,
+              rank: r.rank,
+              title: r.title,
+              url: r.url,
+              domain: r.domain,
+              snippet: r.snippet,
+              rating: r.rating,
+              reviewCount: r.reviewCount,
+              locationText: r.locationText,
+            }));
+            setMapResults(formattedResults);
+            const timeStr = new Date(mapsRun.completedAt || mapsRun.requestedAt).toLocaleTimeString();
+            setScanTimestamp(timeStr);
+            try {
+              localStorage.setItem(
+                `local_seo_maps_${selectedBizId}`,
+                JSON.stringify({ results: formattedResults, timestamp: timeStr })
+              );
+            } catch {}
+            return;
+          }
+        }
+
+        // If no saved results in DB or cache, automatically run scan once
+        if (!autoTriggeredMapsRef.current.has(selectedBizId) && isMounted) {
+          autoTriggeredMapsRef.current.add(selectedBizId);
+          handleScanMaps();
+        }
+      } catch (err) {
+        console.error('Error fetching search history:', err);
+      }
+    }
+
+    loadDbHistoryOrAutoScan();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedBizId, loadingBiz, getToken, mapResults.length, handleScanMaps]);
 
   // Run AI Review Sentiment & Opportunities Analysis
   const handleAnalyzeReviews = async () => {
@@ -235,67 +373,15 @@ export default function LocalSeoPage() {
         }
       );
       setReviewAnalysis(data);
+      try {
+        localStorage.setItem(`local_seo_reviews_${selectedBizId}`, JSON.stringify(data));
+      } catch (storageErr) {
+        console.error('Could not save reviews to localStorage:', storageErr);
+      }
     } catch (err: any) {
       console.error('Review analysis error:', err);
-      // Fallback structured data for robust UX
-      setReviewAnalysis({
-        themes: [
-          {
-            theme: 'Rapid Emergency Response & Same-Day Booking',
-            sentiment: 'positive',
-            frequency: 18,
-            examples: [
-              'Called at 8 AM and they were at my door by 10 AM.',
-              'Saved my weekend when nobody else was answering.',
-            ],
-          },
-          {
-            theme: 'Transparent Upfront Pricing vs Hidden Estimates',
-            sentiment: 'positive',
-            frequency: 14,
-            examples: [
-              'No surprise charges on the invoice, exactly what they quoted.',
-              'Appreciated the clear breakdown before starting work.',
-            ],
-          },
-          {
-            theme: 'Competitor Phone Wait Times & Voicemail Frustration',
-            sentiment: 'negative',
-            frequency: 9,
-            examples: [
-              'Competitors took 3 days to return my call.',
-              'Hard to get a real human on the phone with the other companies.',
-            ],
-          },
-        ],
-        commonPraise: [
-          'Immediate phone pickup by real local staff',
-          'Punctual technicians who explain technical problems clearly',
-          'Clean workspace cleanup after project completion',
-        ],
-        commonComplaints: [
-          'Competitors failing to provide clear time windows',
-          'Rival quotes changing drastically after inspection',
-        ],
-        websiteCopyOpportunities: [
-          {
-            theme: 'Guaranteed 60-Minute Response',
-            customerQuoteOrVocabulary: '"Saved my weekend when nobody else answered"',
-            suggestedCopyHeadline: 'Same-Day Local Emergency Care: In Your Neighborhood in Under 60 Minutes',
-            targetPage: '/services/emergency',
-          },
-          {
-            theme: 'Upfront Flat-Rate Honesty',
-            customerQuoteOrVocabulary: '"No surprise fees on the final bill"',
-            suggestedCopyHeadline: '100% Upfront Transparent Pricing — The Price We Quote Is The Price You Pay',
-            targetPage: '/pricing-guide',
-          },
-        ],
-        serviceImprovementOpportunities: [
-          'Add automated SMS notifications when technician is 15 minutes away',
-          'Include customer quote badges directly on Google Business Profile updates',
-        ],
-      });
+      setError(err.message || 'Review analysis failed. Please try again.');
+      setReviewAnalysis(null);
     } finally {
       setAnalyzingReviews(false);
     }
@@ -383,49 +469,85 @@ export default function LocalSeoPage() {
         </div>
       )}
 
-      {/* ── 2. STATS & QUICK HIGHLIGHTS ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-              Google Maps Visibility
-            </span>
-            <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
-              <CheckCircle2 className="w-4 h-4" />
-            </span>
-          </div>
-          <div className="text-2xl font-black text-slate-900 mt-2">Top 3 Contender</div>
-          <p className="text-xs text-slate-500 mt-1">High conversion local pack placement</p>
-        </div>
+      {/* ── 2. STATS & QUICK HIGHLIGHTS (COMPUTED LIVE FROM AUDIT DATA) ── */}
+      {(() => {
+        const selectedBiz = businesses.find((b) => b.id === selectedBizId);
+        const myRankItem = mapResults.find(
+          (m) =>
+            (selectedBiz?.name && m.title.toLowerCase().includes(selectedBiz.name.toLowerCase())) ||
+            (selectedBiz?.websiteUrl && m.url && m.url.includes(new URL(selectedBiz.websiteUrl).hostname.replace(/^www\./, '')))
+        );
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-              Review Sentiment Rating
-            </span>
-            <span className="p-1.5 rounded-lg bg-amber-50 text-amber-600">
-              <Star className="w-4 h-4" />
-            </span>
-          </div>
-          <div className="text-2xl font-black text-indigo-600 mt-2">4.9 ★ Rating</div>
-          <p className="text-xs text-slate-500 mt-1">Direct trust differentiator against rivals</p>
-        </div>
+        const averageRivalRating =
+          mapResults.length > 0
+            ? (
+                mapResults.reduce((acc, curr) => acc + (parseFloat(curr.rating || '0') || 0), 0) /
+                (mapResults.filter((m) => m.rating).length || 1)
+              ).toFixed(1)
+            : '4.8';
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-              Local High-Intent Keywords
-            </span>
-            <span className="p-1.5 rounded-lg bg-cyan-50 text-cyan-600">
-              <TrendingUp className="w-4 h-4" />
-            </span>
+        const totalReviewsAudited = mapResults.reduce(
+          (acc, curr) => acc + (curr.reviewCount || 0),
+          0
+        );
+
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  Google Maps 3-Pack Presence
+                </span>
+                <span className={`p-1.5 rounded-lg ${myRankItem && myRankItem.rank <= 3 ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                  <CheckCircle2 className="w-4 h-4" />
+                </span>
+              </div>
+              <div className="text-2xl font-black text-slate-900 mt-2">
+                {myRankItem ? `#${myRankItem.rank} in 3-Pack` : mapResults.length > 0 ? 'Top 10 Contender' : 'Awaiting Audit'}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                {myRankItem ? `Ranked #${myRankItem.rank} in local customer radius` : `${mapResults.length} local competitors analyzed`}
+              </p>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  Local Pack Rating Benchmark
+                </span>
+                <span className="p-1.5 rounded-lg bg-amber-50 text-amber-600">
+                  <Star className="w-4 h-4" />
+                </span>
+              </div>
+              <div className="text-2xl font-black text-indigo-600 mt-2 flex items-center gap-1.5">
+                <span>{myRankItem?.rating || averageRivalRating}</span>
+                <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
+                <span className="text-sm font-semibold text-slate-400">
+                  ({myRankItem ? `${myRankItem.reviewCount || 0} reviews` : `avg ${averageRivalRating}`})
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                {totalReviewsAudited > 0 ? `${totalReviewsAudited} total customer reviews benchmarked` : 'Direct trust differentiator against rivals'}
+              </p>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  Audited Target Territory
+                </span>
+                <span className="p-1.5 rounded-lg bg-cyan-50 text-cyan-600">
+                  <TrendingUp className="w-4 h-4" />
+                </span>
+              </div>
+              <div className="text-2xl font-black text-cyan-700 mt-2 truncate">
+                {location ? location : 'Indirapuram'}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Direct phone calls & directions focused</p>
+            </div>
           </div>
-          <div className="text-2xl font-black text-cyan-700 mt-2">
-            {location ? `${location} Area` : 'Metro Targeted'}
-          </div>
-          <p className="text-xs text-slate-500 mt-1">Calls & in-person walk-in focused</p>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* ── 3. TAB NAVIGATION ── */}
       <div className="flex items-center gap-2 border-b border-slate-200">
@@ -490,15 +612,61 @@ export default function LocalSeoPage() {
               />
             </div>
 
-            <div className="relative w-full md:w-56">
+            <div className="relative w-full md:w-72">
               <MapPin className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="Target City / Metro"
-                className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
+                onChange={(e) => handleLocationInputChange(e.target.value)}
+                onFocus={() => {
+                  if (locationSuggestions.length > 0) setShowLocationDropdown(true);
+                }}
+                placeholder="City, Pincode, or Clinic"
+                className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
               />
+              {isSearchingLocation && (
+                <Loader2 className="w-3.5 h-3.5 text-indigo-600 animate-spin absolute right-3 top-1/2 -translate-y-1/2" />
+              )}
+
+              {/* Autocomplete Dropdown */}
+              {showLocationDropdown && locationSuggestions.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-64 overflow-y-auto divide-y divide-slate-100 animate-in fade-in slide-in-from-top-1 duration-150">
+                  {locationSuggestions.map((item) => (
+                    <div
+                      key={item.id}
+                      onClick={() => handleSelectLocation(item)}
+                      className="p-3 hover:bg-indigo-50/60 cursor-pointer transition flex items-start gap-2.5 text-left"
+                    >
+                      <div className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${
+                        item.type === 'place'
+                          ? 'bg-amber-50 text-amber-600 border border-amber-200'
+                          : 'bg-indigo-50 text-indigo-600 border border-indigo-200'
+                      }`}>
+                        {item.type === 'place' ? (
+                          <Building2 className="w-3.5 h-3.5" />
+                        ) : (
+                          <MapPin className="w-3.5 h-3.5" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-slate-900 truncate">
+                            {item.name}
+                          </span>
+                          <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 shrink-0">
+                            {item.category}
+                          </span>
+                        </div>
+                        {item.address && (
+                          <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                            {item.address}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <button
@@ -526,15 +694,22 @@ export default function LocalSeoPage() {
                   Simulating buyer queries seeking immediate phone calls and directions.
                 </p>
               </div>
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Live Google Maps Engine
-              </span>
+              <div className="flex items-center gap-2">
+                {scanTimestamp && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    Saved locally
+                  </span>
+                )}
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  Google Maps Engine
+                </span>
+              </div>
             </div>
 
             {mapResults.length === 0 ? (
               <div className="p-12 text-center">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-3 text-xl">
-                  📍
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-3">
+                  <MapPin className="w-6 h-6" />
                 </div>
                 <h4 className="text-sm font-bold text-slate-900">No Map Pack Audited Yet</h4>
                 <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
@@ -584,7 +759,8 @@ export default function LocalSeoPage() {
                           <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 flex-wrap">
                             {item.rating && (
                               <span className="font-semibold text-amber-600 flex items-center gap-1">
-                                ★ {item.rating}
+                                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                                <span>{item.rating}</span>
                                 {item.reviewCount ? ` (${item.reviewCount} reviews)` : ''}
                               </span>
                             )}
@@ -736,69 +912,337 @@ export default function LocalSeoPage() {
         </div>
       )}
 
-      {/* TAB 3: LOCAL PROTOCOL CHECKLIST */}
-      {activeTab === 'checklist' && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-xs space-y-6 animate-fade-in">
-          <div>
-            <h3 className="text-base font-bold text-slate-900">
-              Google Business Profile (GBP) Dominance Checklist
-            </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              The exact local signals Google weighs when deciding which businesses get into the 3-Pack.
-            </p>
+      {/* TAB 3: LOCAL PROTOCOL CHECKLIST (LIVE AUDIT ENGINE) */}
+      {activeTab === 'checklist' && (() => {
+        const selectedBiz = businesses.find((b) => b.id === selectedBizId);
+        const myRankItem = mapResults.find(
+          (m) =>
+            (selectedBiz?.name && m.title.toLowerCase().includes(selectedBiz.name.toLowerCase())) ||
+            (selectedBiz?.websiteUrl && m.url && m.url.includes(new URL(selectedBiz.websiteUrl).hostname.replace(/^www\./, '')))
+        );
+
+        const is3PackWinner = Boolean(myRankItem && myRankItem.rank <= 3);
+        const hasVerifiedDomain = Boolean(selectedBiz?.websiteUrl && selectedBiz.websiteUrl.startsWith('http'));
+        const hasTargetLocation = Boolean(location && location.trim().length > 0);
+        const hasReviewsAudited = (reviewAnalysis?.themes?.length || 0) > 0 || (myRankItem?.reviewCount || 0) > 0;
+
+        const auditSignals = [
+          {
+            id: 'signal_1',
+            title: '1. Google 3-Pack Placement & Local Radar',
+            category: 'Proximity & Authority',
+            status: is3PackWinner ? 'passed' : myRankItem ? 'warning' : 'critical',
+            badgeText: is3PackWinner
+              ? `Passed (Rank #${myRankItem?.rank})`
+              : myRankItem
+              ? `Rank #${myRankItem.rank} (Needs Boost)`
+              : 'Not In 3-Pack',
+            summary: is3PackWinner
+              ? `Your profile is capturing maximum search visibility inside Google's 3-Pack for local searchers.`
+              : `Currently competing against ${mapResults.length || 'local'} rivals. You must optimize category authority and citation velocity to break into the Top 3.`,
+            metrics: [
+              { label: 'Current Rank', value: myRankItem ? `#${myRankItem.rank}` : 'Unranked' },
+              { label: 'Scanned Rivals', value: `${mapResults.length} Competitors` },
+              { label: 'Pack Cutoff', value: 'Rank #3' },
+            ],
+            checklist: [
+              {
+                id: 'sig1_cat_match',
+                task: 'Align GBP primary category with the #1 ranking competitor',
+                priority: 'High',
+                detail: 'Ensure your primary business category precisely reflects high-intent search terms (e.g., "Dental Clinic" vs "Dentist").',
+              },
+              {
+                id: 'sig1_geotag_media',
+                task: 'Upload 5+ fresh geotagged clinic/storefront photos monthly',
+                priority: 'High',
+                detail: 'Fresh imagery signals active operation to Google Maps ranking algorithms and boosts click-through conversion.',
+              },
+              {
+                id: 'sig1_complete_profile',
+                task: 'Attain 100% Google Business Profile completion score',
+                priority: 'Medium',
+                detail: 'Populate exact operating hours, special holiday schedules, booking links, and service menus.',
+              },
+            ],
+          },
+          {
+            id: 'signal_2',
+            title: '2. Canonical NAP & Website Domain Linkage',
+            category: 'Citation Integrity',
+            status: hasVerifiedDomain ? 'passed' : 'critical',
+            badgeText: hasVerifiedDomain ? 'Verified' : 'Action Needed',
+            summary: hasVerifiedDomain
+              ? `Canonical website linkage confirmed for ${selectedBiz?.websiteUrl}. Name, Address, and Phone must stay strictly identical across directories.`
+              : `No verified website URL linked to this business profile. Unlinked profiles suffer heavy local algorithmic rank suppression.`,
+            metrics: [
+              { label: 'Canonical URL', value: selectedBiz?.websiteUrl ? new URL(selectedBiz.websiteUrl).hostname : 'Missing' },
+              { label: 'SSL Protocol', value: selectedBiz?.websiteUrl?.startsWith('https') ? 'HTTPS Active' : 'Non-SSL' },
+              { label: 'Schema Target', value: 'LocalBusiness (JSON-LD)' },
+            ],
+            checklist: [
+              {
+                id: 'sig2_schema_embed',
+                task: 'Deploy LocalBusiness Schema markup in website header/footer',
+                priority: 'High',
+                detail: 'Include name, address, telephone, geo coordinates, and opening hours in structured JSON-LD for Google crawler validation.',
+              },
+              {
+                id: 'sig2_utm_tracking',
+                task: 'Tag GBP website URL with UTM campaign parameters',
+                priority: 'Medium',
+                detail: 'Append ?utm_source=google&utm_medium=organic&utm_campaign=gbp to isolate high-intent local organic traffic in analytics.',
+              },
+              {
+                id: 'sig2_nap_consistency',
+                task: 'Standardize Name, Address, and Phone across all external directories',
+                priority: 'High',
+                detail: 'Eliminate minor variations (St vs Street, suite numbers, old phone numbers) on Justdial, Sulekha, and Apple Maps.',
+              },
+            ],
+          },
+          {
+            id: 'signal_3',
+            title: '3. Voice of Customer & Review Velocity',
+            category: 'Trust & Sentiment Signals',
+            status: hasReviewsAudited ? 'passed' : 'warning',
+            badgeText: hasReviewsAudited ? 'Audited' : 'Review Gap',
+            summary: myRankItem?.rating
+              ? `Maintaining ${myRankItem.rating}★ across ${myRankItem.reviewCount || 0} reviews. Consistent positive review intake outpaces local competitors.`
+              : `Review signals require continuous velocity. Profiles with frequent new positive reviews receive superior local rank bias.`,
+            metrics: [
+              { label: 'Star Rating', value: myRankItem?.rating ? `${myRankItem.rating} ★` : '4.5+ Goal' },
+              { label: 'Review Count', value: myRankItem?.reviewCount ? `${myRankItem.reviewCount}` : 'Audit Needed' },
+              { label: 'Response Target', value: '100% within 24h' },
+            ],
+            checklist: [
+              {
+                id: 'sig3_reply_sla',
+                task: 'Establish a 24-hour response SLA for 100% of reviews',
+                priority: 'High',
+                detail: 'Google rewards businesses that actively engage with reviews. Include polite, keyword-rich acknowledgments.',
+              },
+              {
+                id: 'sig3_keyword_copy',
+                task: 'Inject dominant positive review themes into landing page copy',
+                priority: 'Medium',
+                detail: 'Incorporate real patient phrases identified by AI (e.g., painless treatment, friendly staff) into website headings.',
+              },
+              {
+                id: 'sig3_automated_funnel',
+                task: 'Deploy automated post-visit review requests via WhatsApp/SMS',
+                priority: 'High',
+                detail: 'Send direct Google Review short-links within 2 hours of customer service completion to maximize 5-star intake velocity.',
+              },
+            ],
+          },
+          {
+            id: 'signal_4',
+            title: '4. Geographic Territory & Radius Targeting',
+            category: 'Hyper-Local Proximity',
+            status: hasTargetLocation ? 'passed' : 'warning',
+            badgeText: hasTargetLocation ? 'Active Target' : 'Global (Untargeted)',
+            summary: `Simulating search queries anchored to ${location || 'Indirapuram'}. Google prioritizes businesses with tight proximity and localized service zones.`,
+            metrics: [
+              { label: 'Target Territory', value: location || 'Indirapuram' },
+              { label: 'Effective Radius', value: '3 - 8 km' },
+              { label: 'Market Mode', value: 'High Density' },
+            ],
+            checklist: [
+              {
+                id: 'sig4_service_areas',
+                task: 'Explicitly configure all sub-localities in Google Business Profile',
+                priority: 'High',
+                detail: 'List surrounding sectors, neighborhoods, and landmark areas as official service areas to expand your proximity halo.',
+              },
+              {
+                id: 'sig4_local_pages',
+                task: 'Build dedicated neighborhood landing pages with driving directions',
+                priority: 'Medium',
+                detail: 'Create localized pages mentioning prominent crossroads, transit stations, and community landmarks.',
+              },
+              {
+                id: 'sig4_hyperlocal_citations',
+                task: 'Acquire 3+ hyper-local directory citations and community links',
+                priority: 'Medium',
+                detail: 'Get listed on local resident welfare portals, neighborhood business directories, and regional healthcare listings.',
+              },
+            ],
+          },
+        ];
+
+        // Compute total checklist progress
+        const allChecklistItems = auditSignals.flatMap((s) => s.checklist);
+        const totalItems = allChecklistItems.length;
+        const completedCount = allChecklistItems.filter((i) => checklistCompleted[i.id]).length;
+        const progressPercentage = Math.round((completedCount / totalItems) * 100);
+
+        return (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-xs space-y-8 animate-fade-in">
+            {/* Header with Live Score & Progress */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-slate-100">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2.5">
+                  <h3 className="text-lg font-bold text-slate-900">
+                    Google Business Profile (GBP) Live Audit Protocol
+                  </h3>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    Live Telemetry
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 max-w-2xl">
+                  Continuous multi-point algorithmic audit of your local SEO signals for{' '}
+                  <strong className="text-slate-800">{selectedBiz?.name || 'Your Business'}</strong> in{' '}
+                  <strong className="text-indigo-600">{location || 'Indirapuram'}</strong>.
+                </p>
+              </div>
+
+              {/* Progress Summary Cards */}
+              <div className="flex items-center gap-4 shrink-0">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-center">
+                  <div className="text-[10px] uppercase font-bold text-slate-500">Core Signals Passed</div>
+                  <div className="text-base font-black text-emerald-600">
+                    {Number(is3PackWinner) + Number(hasVerifiedDomain) + Number(hasTargetLocation) + Number(hasReviewsAudited)} / 4
+                  </div>
+                </div>
+
+                <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl px-4 py-2.5 min-w-[160px]">
+                  <div className="flex items-center justify-between text-[10px] uppercase font-bold text-indigo-900 mb-1">
+                    <span>Protocol Checklist</span>
+                    <span>{progressPercentage}%</span>
+                  </div>
+                  <div className="w-full bg-indigo-200/50 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-indigo-600 h-full rounded-full transition-all duration-300"
+                      style={{ width: `${progressPercentage}%` }}
+                    />
+                  </div>
+                  <div className="text-[10px] text-indigo-700/80 font-medium text-right mt-1">
+                    {completedCount} of {totalItems} tasks completed
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 4 Core Signal Audit Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {auditSignals.map((signal) => {
+                const isPassed = signal.status === 'passed';
+                const isWarning = signal.status === 'warning';
+
+                return (
+                  <div
+                    key={signal.id}
+                    className={`rounded-2xl border p-5 sm:p-6 space-y-5 transition-all shadow-xs ${
+                      isPassed
+                        ? 'border-emerald-200/80 bg-emerald-50/20'
+                        : isWarning
+                        ? 'border-amber-200/80 bg-amber-50/20'
+                        : 'border-rose-200/80 bg-rose-50/20'
+                    }`}
+                  >
+                    {/* Header: Title & Status Badge */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          {signal.category}
+                        </span>
+                        <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                          {signal.title}
+                        </h4>
+                      </div>
+                      <span
+                        className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider shrink-0 border ${
+                          isPassed
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                            : isWarning
+                            ? 'bg-amber-100 text-amber-800 border-amber-200'
+                            : 'bg-rose-100 text-rose-800 border-rose-200'
+                        }`}
+                      >
+                        {signal.badgeText}
+                      </span>
+                    </div>
+
+                    {/* Summary Description */}
+                    <p className="text-xs text-slate-600 leading-relaxed">{signal.summary}</p>
+
+                    {/* Live Metrics Row */}
+                    <div className="grid grid-cols-3 gap-2 py-2.5 px-3 rounded-xl bg-white border border-slate-200/80 shadow-xs">
+                      {signal.metrics.map((m, idx) => (
+                        <div key={idx} className="text-center">
+                          <div className="text-[9px] uppercase tracking-wider font-semibold text-slate-600">
+                            {m.label}
+                          </div>
+                          <div className="text-xs font-bold text-slate-900 truncate mt-0.5">
+                            {m.value}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Actionable Interactive Checklist */}
+                    <div className="space-y-2.5 pt-2 border-t border-slate-200/60">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-800">
+                        <span>Actionable Optimization Tasks</span>
+                        <span className="text-[10px] font-semibold text-slate-600">
+                          {signal.checklist.filter((item) => checklistCompleted[item.id]).length} / {signal.checklist.length} Done
+                        </span>
+                      </div>
+
+                      <div className="space-y-2">
+                        {signal.checklist.map((item) => {
+                          const isChecked = Boolean(checklistCompleted[item.id]);
+
+                          return (
+                            <div
+                              key={item.id}
+                              onClick={() => toggleChecklistItem(item.id)}
+                              className={`p-3 rounded-xl border text-xs cursor-pointer transition-all flex items-start gap-3 select-none ${
+                                isChecked
+                                  ? 'bg-emerald-50/60 border-emerald-200 text-slate-600 line-through'
+                                  : 'bg-white border-slate-200 hover:border-indigo-300 text-slate-800 shadow-2xs'
+                              }`}
+                            >
+                              <div className="pt-0.5 shrink-0">
+                                {isChecked ? (
+                                  <CheckSquare className="w-4 h-4 text-emerald-600" />
+                                ) : (
+                                  <Square className="w-4 h-4 text-slate-400 hover:text-indigo-600" />
+                                )}
+                              </div>
+
+                              <div className="space-y-1 flex-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className={`font-semibold ${isChecked ? 'line-through text-slate-500' : 'text-slate-900'}`}>
+                                    {item.task}
+                                  </span>
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 ${
+                                      item.priority === 'High'
+                                        ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                        : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                    }`}
+                                  >
+                                    {item.priority}
+                                  </span>
+                                </div>
+                                <p className={`text-[11px] leading-relaxed ${isChecked ? 'text-slate-500' : 'text-slate-600'}`}>
+                                  {item.detail}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/80 flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700 shrink-0">
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-              <div>
-                <h4 className="text-xs font-bold text-slate-900">NAP Consistency Verification</h4>
-                <p className="text-xs text-slate-500 mt-1">
-                  Ensure Name, Address, and Phone number are formatted identically across your website footer, Google Maps, Apple Maps, and local citations.
-                </p>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/80 flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700 shrink-0">
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-              <div>
-                <h4 className="text-xs font-bold text-slate-900">Weekly Review Acquisition Velocity</h4>
-                <p className="text-xs text-slate-500 mt-1">
-                  Google prioritizes steady review inflows over bulk spikes. Aim for 2-3 genuine customer reviews per week mentioning specific services.
-                </p>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/80 flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700 shrink-0">
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-              <div>
-                <h4 className="text-xs font-bold text-slate-900">High-Resolution Geotagged Photos</h4>
-                <p className="text-xs text-slate-500 mt-1">
-                  Upload fresh photos of your storefront, team, and equipment monthly. Profiles with 50+ photos receive 42% more direction requests.
-                </p>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/80 flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700 shrink-0">
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-              <div>
-                <h4 className="text-xs font-bold text-slate-900">Primary & Secondary Category Tuning</h4>
-                <p className="text-xs text-slate-500 mt-1">
-                  Ensure your primary GBP category matches the highest volume intent keyword, with secondary categories covering ancillary services.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

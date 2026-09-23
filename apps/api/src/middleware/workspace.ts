@@ -20,7 +20,7 @@ export async function requireWorkspace(
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  const userId = req.auth?.userId;
+  const userId = (req as any)._parsedAuth?.userId;
   if (!userId) {
     res.status(401).json({
       success: false,
@@ -29,8 +29,12 @@ export async function requireWorkspace(
     return;
   }
 
-  // Check header or query parameter for workspace ID
+  // Check if workspace is already resolved from earlier middleware on this request
   const headerWsId = (req.headers['x-workspace-id'] as string) || (req.query.workspaceId as string);
+  const existingWs = (req as WorkspaceRequest).workspace;
+  if (existingWs && (!headerWsId || existingWs.id === headerWsId)) {
+    return next();
+  }
 
   try {
     if (headerWsId) {

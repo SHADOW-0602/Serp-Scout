@@ -19,6 +19,9 @@ export interface ExtractedCandidateDomain {
   appearancesCount: number;
   queriesAppearedIn: string[];
   observedSnippets: string[];
+  hasAds?: boolean;
+  latitude?: number;
+  longitude?: number;
 }
 
 export function extractDomain(url: string): string {
@@ -45,10 +48,16 @@ export function extractCompetitorCandidates(
     let reviewsCount: number | undefined;
     let address: string | undefined;
     let category: string | undefined;
+    let isAd = false;
+    let latitude: number | undefined;
+    let longitude: number | undefined;
 
     if (source === 'google') {
       const organic = item as NormalizedSearchResult;
       url = organic.url;
+      isAd = !!organic.isAd || organic.serpFeatures?.includes('google_ads') || false;
+      latitude = (organic.raw as any)?.gps_coordinates?.latitude;
+      longitude = (organic.raw as any)?.gps_coordinates?.longitude;
     } else {
       const maps = item as NormalizedMapsResult;
       url = maps.website || (maps.raw?.link as string) || '';
@@ -57,6 +66,8 @@ export function extractCompetitorCandidates(
       reviewsCount = maps.reviewsCount;
       address = maps.address;
       category = maps.category;
+      latitude = maps.latitude || (maps.raw as any)?.gps_coordinates?.latitude;
+      longitude = maps.longitude || (maps.raw as any)?.gps_coordinates?.longitude;
     }
 
     if (!url) continue;
@@ -78,6 +89,11 @@ export function extractCompetitorCandidates(
       if (!existing.rating && rating) existing.rating = rating;
       if (!existing.reviewsCount && reviewsCount) existing.reviewsCount = reviewsCount;
       if (!existing.category && category) existing.category = category;
+      if (isAd) existing.hasAds = true;
+      if (!existing.latitude && latitude) {
+        existing.latitude = latitude;
+        existing.longitude = longitude;
+      }
     } else {
       domainMap.set(domain, {
         domain,
@@ -92,6 +108,9 @@ export function extractCompetitorCandidates(
         appearancesCount: 1,
         queriesAppearedIn: [query],
         observedSnippets: snippet ? [snippet] : [],
+        hasAds: isAd,
+        latitude,
+        longitude,
       });
     }
   }

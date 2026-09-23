@@ -37,6 +37,16 @@ export type CompetitorType =
   | 'publisher'
   | 'irrelevant';
 
+export type ThreatLevel = 'severe' | 'vulnerable' | 'emerging' | 'moderate';
+
+export interface CompetitorExtractedProfile {
+  bookingTech?: string[];
+  offers?: string[];
+  callsToAction?: string[];
+  phone?: string;
+  hasOnlineBooking?: boolean;
+}
+
 export interface CompetitorCandidate {
   domain: string;
   name: string;
@@ -52,6 +62,15 @@ export interface CompetitorCandidate {
     locationMatch?: string;
     serviceOverlap?: string[];
   }[];
+  threatLevel?: ThreatLevel;
+  threatReason?: string;
+  distanceMiles?: number;
+  proximityLabel?: string;
+  hasAds?: boolean;
+  serpOverlapPercent?: number;
+  extractedProfile?: CompetitorExtractedProfile;
+  rating?: number;
+  reviewCount?: number;
 }
 
 export type SearchIntent =
@@ -138,6 +157,29 @@ export interface Recommendation {
   confidence: 'high' | 'medium' | 'low';
   suggestedOwner?: string;
   suggestedDeadline?: string;
+  implementationSteps?: string[];
+}
+
+export interface ReportShare {
+  id: string;
+  reportId: string;
+  businessId: string;
+  shareToken: string;
+  viewMode: 'executive' | 'specialist';
+  expiresAt?: string | null;
+  createdAt: string;
+}
+
+export interface MarketAlert {
+  id: string;
+  businessId: string;
+  type: '3pack_displacement' | 'review_spike' | 'competitor_ads' | 'critical_rank_drop';
+  severity: 'critical' | 'high' | 'medium';
+  title: string;
+  description: string;
+  details?: Record<string, any>;
+  dismissed: boolean;
+  detectedAt: string;
 }
 
 export interface GeneratedReport {

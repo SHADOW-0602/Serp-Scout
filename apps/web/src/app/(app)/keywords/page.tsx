@@ -4,6 +4,15 @@ import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { apiClient } from '@/lib/api';
+import {
+  Sparkles,
+  RefreshCw,
+  Plus,
+  Radio,
+  Search,
+  X,
+  Trash2,
+} from 'lucide-react';
 
 interface BusinessSummary {
   id: string;
@@ -82,6 +91,24 @@ export default function KeywordsPage() {
   const [radarHistory, setRadarHistory] = useState<SearchRunRecord[]>([]);
   const [activeRadarDetails, setActiveRadarDetails] = useState<SearchRunRecord | null>(null);
 
+  const autoTriggeredKeywordsRef = React.useRef<Set<string>>(new Set());
+
+  // Instant cache retrieval on business change
+  useEffect(() => {
+    if (!selectedBizId || typeof window === 'undefined') return;
+    try {
+      const cached = localStorage.getItem(`keywords_cache_${selectedBizId}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setKeywords(parsed);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to read keywords cache:', e);
+    }
+  }, [selectedBizId]);
+
   // Load Businesses on Mount
   useEffect(() => {
     async function loadBusinesses() {
@@ -102,6 +129,38 @@ export default function KeywordsPage() {
     loadBusinesses();
   }, [getToken]);
 
+  // Run AI Keyword Discovery
+  const handleDiscoverKeywords = useCallback(async (targetBizId?: string) => {
+    const bizId = targetBizId || selectedBizId;
+    if (!bizId) return;
+    setDiscovering(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const res = await apiClient<{ discoveredCount: number }>(
+        `/api/businesses/${bizId}/keywords/discover`,
+        {
+          method: 'POST',
+          token,
+        }
+      );
+      setSuccessMsg(`Discovered ${res.discoveredCount} new high-intent keyword candidates!`);
+      // Reload keywords after discovery
+      const refreshed = await apiClient<KeywordRankingDetail[]>(`/api/businesses/${bizId}/keywords`, { token });
+      setKeywords(refreshed);
+      try {
+        localStorage.setItem(`keywords_cache_${bizId}`, JSON.stringify(refreshed));
+      } catch {}
+    } catch (err: any) {
+      console.error('Failed to discover keywords:', err);
+      setError(err.message || 'Failed to discover keywords');
+    } finally {
+      setDiscovering(false);
+    }
+  }, [selectedBizId, getToken]);
+
   // Load Keywords & Rankings
   const loadKeywords = useCallback(async () => {
     if (!selectedBizId) return;
@@ -112,13 +171,22 @@ export default function KeywordsPage() {
       if (!token) return;
       const data = await apiClient<KeywordRankingDetail[]>(`/api/businesses/${selectedBizId}/keywords`, { token });
       setKeywords(data);
+      try {
+        localStorage.setItem(`keywords_cache_${selectedBizId}`, JSON.stringify(data));
+      } catch {}
+
+      // Auto-trigger discovery if 0 keywords exist for this business
+      if (data.length === 0 && !autoTriggeredKeywordsRef.current.has(selectedBizId)) {
+        autoTriggeredKeywordsRef.current.add(selectedBizId);
+        handleDiscoverKeywords(selectedBizId);
+      }
     } catch (err: any) {
       console.error('Failed to load keywords:', err);
       setError(err.message || 'Failed to fetch keywords');
     } finally {
       setLoading(false);
     }
-  }, [selectedBizId, getToken]);
+  }, [selectedBizId, getToken, handleDiscoverKeywords]);
 
   // Load Search History for Radar tab
   const loadRadarHistory = useCallback(async () => {
@@ -141,32 +209,6 @@ export default function KeywordsPage() {
     loadKeywords();
     loadRadarHistory();
   }, [selectedBizId, loadKeywords, loadRadarHistory]);
-
-  // Run AI Keyword Discovery
-  const handleDiscoverKeywords = async () => {
-    if (!selectedBizId) return;
-    setDiscovering(true);
-    setError(null);
-    setSuccessMsg(null);
-    try {
-      const token = await getToken();
-      if (!token) return;
-      const res = await apiClient<{ discoveredCount: number }>(
-        `/api/businesses/${selectedBizId}/keywords/discover`,
-        {
-          method: 'POST',
-          token,
-        }
-      );
-      setSuccessMsg(`Discovered ${res.discoveredCount} new high-intent keyword candidates!`);
-      await loadKeywords();
-    } catch (err: any) {
-      console.error('Discovery error:', err);
-      setError(err.message || 'Failed to discover keywords');
-    } finally {
-      setDiscovering(false);
-    }
-  };
 
   // Run Ranking Refresh
   const handleRefreshRankings = async () => {
@@ -356,7 +398,7 @@ export default function KeywordsPage() {
           )}
 
           <button
-            onClick={handleDiscoverKeywords}
+            onClick={() => handleDiscoverKeywords()}
             disabled={discovering || !selectedBizId}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors disabled:opacity-50 shadow-xs"
           >
@@ -370,7 +412,8 @@ export default function KeywordsPage() {
               </>
             ) : (
               <>
-                <span>✨</span> Discover Keywords
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Discover Keywords</span>
               </>
             )}
           </button>
@@ -390,7 +433,8 @@ export default function KeywordsPage() {
               </>
             ) : (
               <>
-                <span>🔄</span> Refresh Rankings
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Refresh Rankings</span>
               </>
             )}
           </button>
@@ -399,7 +443,8 @@ export default function KeywordsPage() {
             onClick={() => setShowAddModal(true)}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 text-white hover:opacity-95 shadow-sm transition-all"
           >
-            <span>+</span> Add Keyword
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Keyword</span>
           </button>
         </div>
       </div>
@@ -408,14 +453,18 @@ export default function KeywordsPage() {
       {error && (
         <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-xl text-xs font-medium flex items-center justify-between animate-fade-in shadow-xs">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-rose-500 font-bold ml-2">✕</button>
+          <button onClick={() => setError(null)} className="text-rose-500 hover:text-rose-700 ml-2">
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 
       {successMsg && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl text-xs font-medium flex items-center justify-between animate-fade-in shadow-xs">
           <span>{successMsg}</span>
-          <button onClick={() => setSuccessMsg(null)} className="text-emerald-600 font-bold ml-2">✕</button>
+          <button onClick={() => setSuccessMsg(null)} className="text-emerald-600 hover:text-emerald-800 ml-2">
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 
@@ -489,13 +538,14 @@ export default function KeywordsPage() {
           </button>
           <button
             onClick={() => setActiveTab('serp_radar')}
-            className={`py-3 text-xs font-semibold border-b-2 transition-colors ${
+            className={`py-3 text-xs font-semibold border-b-2 transition-colors inline-flex items-center gap-1.5 ${
               activeTab === 'serp_radar'
                 ? 'border-indigo-600 text-indigo-600'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            Live SERP Radar 📡
+            <Radio className="w-3.5 h-3.5" />
+            <span>Live SERP Radar</span>
           </button>
         </nav>
       </div>
@@ -507,7 +557,11 @@ export default function KeywordsPage() {
             <div className="p-12 text-center text-sm text-slate-400">Loading keywords and rankings...</div>
           ) : filteredKeywords.length === 0 ? (
             <div className="p-12 text-center">
-              <div className="text-3xl mb-3">🔍</div>
+              <div className="flex items-center justify-center mb-3">
+                <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400">
+                  <Search className="w-6 h-6" />
+                </div>
+              </div>
               <h3 className="text-sm font-semibold text-slate-800">No keywords found in this tab</h3>
               <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
                 {activeTab === 'candidates'
@@ -516,7 +570,7 @@ export default function KeywordsPage() {
               </p>
               <div className="mt-4">
                 <button
-                  onClick={handleDiscoverKeywords}
+                  onClick={() => handleDiscoverKeywords()}
                   disabled={discovering}
                   className="px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 shadow-sm"
                 >
@@ -693,7 +747,7 @@ export default function KeywordsPage() {
                               className="text-slate-400 hover:text-red-600 p-1 transition-colors"
                               title="Delete Keyword"
                             >
-                              ✕
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </td>

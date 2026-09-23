@@ -21,6 +21,9 @@ import {
   BarChart3,
   Layers,
   FileText,
+  RefreshCw,
+  AlertTriangle,
+  Key,
 } from 'lucide-react';
 import AuthLoadingScreen from '@/components/AuthLoadingScreen';
 
@@ -76,58 +79,105 @@ export default function OverviewDashboardPage() {
     loadBusinesses();
   }, [loadBusinesses]);
 
-  const handleRunAnalysis = async (businessId: string) => {
-    setAnalyzing(true);
-    setAnalysisStatus('Enqueueing website analysis task...');
-    setError(null);
+  const autoTriggeredRef = React.useRef(false);
 
-    try {
-      const token = await getToken();
-      if (!token) throw new Error('Authentication expired.');
+  const trackJob = useCallback(
+    async (jobId: string) => {
+      setAnalyzing(true);
+      setAnalysisStatus('Autonomous analysis queued. Initializing background worker...');
+      setError(null);
 
-      // 1. Dispatch analyze request
-      const enqueueRes = await apiClient<{ jobId: string }>(`/api/businesses/${businessId}/analyze`, {
-        token,
-        method: 'POST',
-      });
+      try {
+        const token = await getToken();
+        if (!token) throw new Error('Authentication expired.');
 
-      const jobId = enqueueRes.jobId;
-      setAnalysisStatus('Task queued. Waiting for worker...');
+        const pollInterval = setInterval(async () => {
+          try {
+            const jobRes = await apiClient<JobStatusResponse>(`/api/jobs/${jobId}`, { token });
 
-      // 2. Poll job status
-      const pollInterval = setInterval(async () => {
-        try {
-          const jobRes = await apiClient<JobStatusResponse>(`/api/jobs/${jobId}`, { token });
-
-          if (jobRes.state === 'active') {
-            setAnalysisStatus('Fetching website HTML and running Groq AI extraction...');
-          } else if (jobRes.isCompleted) {
-            clearInterval(pollInterval);
-            setAnalyzing(false);
-            setAnalysisStatus(null);
-            if (jobRes.result) {
-              setAnalysisResult(jobRes.result);
+            if (jobRes.state === 'active') {
+              setAnalysisStatus('Crawling website, extracting meta tags & running Groq AI analysis...');
+            } else if (jobRes.isCompleted) {
+              clearInterval(pollInterval);
+              setAnalyzing(false);
+              setAnalysisStatus(null);
+              if (jobRes.result) {
+                setAnalysisResult(jobRes.result);
+              }
+              loadBusinesses();
+            } else if (jobRes.isFailed) {
+              clearInterval(pollInterval);
+              setAnalyzing(false);
+              setAnalysisStatus(null);
+              setError(`Analysis failed: ${jobRes.failedReason || 'Worker encountered an issue'}`);
             }
-            loadBusinesses();
-          } else if (jobRes.isFailed) {
+          } catch (pollErr: any) {
             clearInterval(pollInterval);
             setAnalyzing(false);
             setAnalysisStatus(null);
-            setError(`Analysis failed: ${jobRes.failedReason || 'Unknown error'}`);
+            setError(pollErr.message || 'Error checking background analysis status');
           }
-        } catch (pollErr: any) {
-          clearInterval(pollInterval);
-          setAnalyzing(false);
-          setAnalysisStatus(null);
-          setError(pollErr.message || 'Error checking analysis status');
-        }
-      }, 2000);
-    } catch (err: any) {
-      setAnalyzing(false);
-      setAnalysisStatus(null);
-      setError(err.message || 'Failed to initiate website analysis');
+        }, 2000);
+      } catch (err: any) {
+        setAnalyzing(false);
+        setAnalysisStatus(null);
+        setError(err.message || 'Failed to inspect analysis job');
+      }
+    },
+    [getToken, loadBusinesses]
+  );
+
+  const handleRunAnalysis = useCallback(
+    async (businessId: string) => {
+      setAnalyzing(true);
+      setAnalysisStatus('Triggering website intelligence engine in background...');
+      setError(null);
+
+      try {
+        const token = await getToken();
+        if (!token) throw new Error('Authentication expired.');
+
+        const enqueueRes = await apiClient<{ jobId: string }>(`/api/businesses/${businessId}/analyze`, {
+          token,
+          method: 'POST',
+        });
+
+        trackJob(enqueueRes.jobId);
+      } catch (err: any) {
+        setAnalyzing(false);
+        setAnalysisStatus(null);
+        setError(err.message || 'Failed to initiate website analysis');
+      }
+    },
+    [getToken, trackJob]
+  );
+
+  // Automatically trigger background analysis if coming from onboarding or unanalyzed business
+  useEffect(() => {
+    if (loading || businesses.length === 0 || autoTriggeredRef.current) return;
+
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const autoAnalyze = params.get('auto_analyze') === 'true';
+      const paramJobId = params.get('job_id');
+      const paramBizId = params.get('biz_id') || params.get('business_id');
+
+      if (paramJobId) {
+        autoTriggeredRef.current = true;
+        trackJob(paramJobId);
+        return;
+      }
+
+      const targetBiz = paramBizId
+        ? businesses.find((b) => b.id === paramBizId) || businesses[0]
+        : businesses[0];
+
+      if (targetBiz && (autoAnalyze || !targetBiz.lastAnalyzedAt)) {
+        autoTriggeredRef.current = true;
+        handleRunAnalysis(targetBiz.id);
+      }
     }
-  };
+  }, [loading, businesses, trackJob, handleRunAnalysis]);
 
   if (loading) {
     return (
@@ -398,8 +448,16 @@ export default function OverviewDashboardPage() {
                 <span className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
                 Analyzing Website...
               </>
+            ) : primaryBusiness.lastAnalyzedAt ? (
+              <span className="inline-flex items-center gap-1.5">
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Re-Analyze Website (AI)</span>
+              </span>
             ) : (
-              <>🔍 Analyze Website (AI)</>
+              <span className="inline-flex items-center gap-1.5">
+                <Search className="w-3.5 h-3.5" />
+                <span>Analyze Website (AI)</span>
+              </span>
             )}
           </button>
         </div>
@@ -407,9 +465,27 @@ export default function OverviewDashboardPage() {
 
       {/* Analysis Progress Status Banner */}
       {analyzing && (
-        <div className="p-4 rounded-2xl bg-indigo-50/90 border border-indigo-200 text-sm text-indigo-800 flex items-center gap-3 animate-pulse shadow-xs">
-          <span className="h-4 w-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></span>
-          <span>{analysisStatus || 'Running website extraction...'}</span>
+        <div className="p-5 rounded-2xl bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 border border-indigo-700/60 text-white shadow-xl shadow-indigo-950/20 animate-fade-in relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="flex items-center gap-4 relative z-10">
+            <div className="w-10 h-10 rounded-xl bg-indigo-900/80 border border-indigo-500/50 flex items-center justify-center shrink-0 shadow-inner">
+              <span className="h-5 w-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin"></span>
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-wider text-cyan-400">
+                  Autonomous Background Scout Active
+                </span>
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+              </div>
+              <p className="text-sm font-semibold text-slate-100 mt-0.5">
+                {analysisStatus || 'Crawling website & extracting competitor landscape...'}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                Zero manual intervention required. Results and actionable recommendations will populate dynamically below upon completion.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -423,7 +499,7 @@ export default function OverviewDashboardPage() {
       {primaryBusiness.dataStale && (
         <div className="p-4 rounded-2xl bg-amber-50/90 border border-amber-200 text-sm text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-fade-in">
           <div className="flex items-center gap-3">
-            <span className="text-xl">⚠️</span>
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
             <div>
               <strong className="font-semibold">Search Intelligence Data is Stale</strong>
               <p className="text-xs text-amber-800 mt-0.5">
@@ -446,12 +522,22 @@ export default function OverviewDashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
           <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-            Primary Outcome Goal
+            Primary Outcome Goals
           </div>
-          <div className="text-base font-bold text-slate-900 mt-2 line-clamp-2">
-            {primaryBusiness.primaryGoal || 'Improve Local Search Calls'}
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {(primaryBusiness.primaryGoal || 'More qualified phone calls & inquiries')
+              .split(/;\s*|,\s*/)
+              .filter(Boolean)
+              .map((goal, idx) => (
+                <span
+                  key={idx}
+                  className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/70"
+                >
+                  {goal}
+                </span>
+              ))}
           </div>
-          <p className="text-xs text-slate-500 mt-2">Tailors your 3 weekly actions</p>
+          <p className="text-xs text-slate-500 mt-2">Engine aligns weekly tasks to these priorities</p>
         </div>
 
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs hover:-translate-y-0.5 hover:shadow-md transition-all duration-200">
@@ -459,12 +545,14 @@ export default function OverviewDashboardPage() {
             Website Analysis Status
           </div>
           <div className="text-2xl font-black text-indigo-600 mt-2">
-            {primaryBusiness.lastAnalyzedAt ? 'Audited' : 'Pending'}
+            {analyzing ? 'Scanning...' : primaryBusiness.lastAnalyzedAt ? 'Audited' : 'Pending'}
           </div>
           <p className="text-xs text-slate-500 mt-2">
-            {primaryBusiness.lastAnalyzedAt
+            {analyzing
+              ? 'Autonomous agent active in background'
+              : primaryBusiness.lastAnalyzedAt
               ? `Last analyzed: ${new Date(primaryBusiness.lastAnalyzedAt).toLocaleDateString()}`
-              : 'Click "Analyze Website" to extract services'}
+              : 'Auto-analysis running in background'}
           </p>
         </div>
 
@@ -534,9 +622,10 @@ export default function OverviewDashboardPage() {
                   {analysisResult.detectedLocations.map((loc) => (
                     <span
                       key={loc}
-                      className="px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200"
+                      className="px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 inline-flex items-center gap-1"
                     >
-                      📍 {loc}
+                      <MapPin className="w-3 h-3 text-blue-500 shrink-0" />
+                      <span>{loc}</span>
                     </span>
                   ))}
                 </div>
@@ -553,9 +642,10 @@ export default function OverviewDashboardPage() {
                   {analysisResult.candidateKeywords.map((kw) => (
                     <span
                       key={kw}
-                      className="px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"
+                      className="px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 inline-flex items-center gap-1"
                     >
-                      🔑 {kw}
+                      <Key className="w-3 h-3 text-indigo-500 shrink-0" />
+                      <span>{kw}</span>
                     </span>
                   ))}
                 </div>

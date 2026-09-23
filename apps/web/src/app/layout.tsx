@@ -7,9 +7,11 @@ export const metadata: Metadata = {
   description: 'Success is measured by real business outcomes rather than a "visibility score."',
   icons: {
     icon: [
+      { url: '/favicon.ico', sizes: 'any' },
       { url: '/favicon.svg', type: 'image/svg+xml' },
       { url: '/icon.svg', type: 'image/svg+xml' },
     ],
+    shortcut: '/favicon.ico',
   },
 };
 

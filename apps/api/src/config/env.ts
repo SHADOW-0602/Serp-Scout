@@ -20,6 +20,7 @@ const envSchema = z.object({
   CLERK_JWT_KEY: z.string().optional(),
   CLERK_WEBHOOK_SECRET: z.string().optional(),
   SERPAPI_KEY: z.string().min(1, 'SERPAPI_KEY is required'),
+  TAVILY_API_KEY: z.string().optional(),
   GROQ_API_KEY: z.string().min(1, 'GROQ_API_KEY is required'),
   GROQ_MODEL: z.string().default('llama-3.3-70b-versatile'),
   RESEND_API_KEY: z.string().optional(),

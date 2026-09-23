@@ -75,3 +75,27 @@ export function normalizeNewsResult(
     raw: item,
   };
 }
+
+export function normalizeAdResult(
+  item: Record<string, any>,
+  index: number
+): NormalizedSearchResult {
+  let domain = '';
+  try {
+    const urlObj = new URL(item.link || item.url || '');
+    domain = urlObj.hostname.replace(/^www\./, '');
+  } catch {
+    domain = item.domain || '';
+  }
+
+  return {
+    rank: item.position || index + 1,
+    title: item.title || '',
+    url: item.link || item.url || '',
+    domain,
+    snippet: item.snippet || item.description || '',
+    serpFeatures: ['google_ads', 'sponsored'],
+    isAd: true,
+    raw: item,
+  };
+}

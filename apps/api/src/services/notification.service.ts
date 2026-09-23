@@ -241,4 +241,102 @@ export class NotificationService {
       error: errorMessage || undefined,
     };
   }
+
+  /**
+   * Dispatches emergency market shift alert notification.
+   */
+  static async sendMarketAlertNotification(params: {
+    workspaceId: string;
+    businessId: string;
+    businessName: string;
+    alertTitle: string;
+    alertDescription: string;
+    severity: string;
+    recipientEmail: string;
+  }): Promise<NotificationResult> {
+    const { workspaceId, businessId, businessName, alertTitle, alertDescription, severity, recipientEmail } = params;
+    const subject = `🚨 [EMERGENCY ALERT] ${businessName}: ${alertTitle}`;
+
+    const htmlBody = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #0f172a;">
+        <div style="background: #fee2e2; border: 1px solid #f87171; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <span style="display: inline-block; background: #dc2626; color: white; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 11px; text-transform: uppercase;">
+              ${severity.toUpperCase()} ALERT
+            </span>
+            <span style="font-size: 13px; font-weight: 600; color: #991b1b;">Immediate Market Action Recommended</span>
+          </div>
+          <h2 style="margin: 0 0 10px 0; color: #7f1d1d; font-size: 18px;">${alertTitle}</h2>
+          <p style="margin: 0; color: #991b1b; font-size: 14px; line-height: 1.5;">${alertDescription}</p>
+        </div>
+
+        <p style="font-size: 13px; color: #64748b;">
+          An out-of-cycle market shift was detected for <strong>${businessName}</strong>. Log in to your dashboard to review action items and restore your search visibility.
+        </p>
+
+        <div style="margin-top: 24px; text-align: center;">
+          <a href="${env.FRONTEND_URL}/reports" style="display: inline-block; background: #4f46e5; color: white; padding: 12px 24px; border-radius: 8px; font-weight: bold; font-size: 14px; text-decoration: none;">
+            View Executive Report & Actions
+          </a>
+        </div>
+      </div>
+    `;
+
+    let status: 'sent' | 'failed' = 'sent';
+    let externalId: string | null = null;
+    let errorMessage: string | null = null;
+
+    if (resend) {
+      try {
+        const targetEmail = recipientEmail.endsWith('@example.com')
+          ? 'delivered@resend.dev'
+          : recipientEmail;
+        const fromAddress = env.EMAIL_FROM && !env.EMAIL_FROM.endsWith('@serp-scout.app')
+          ? env.EMAIL_FROM
+          : 'onboarding@resend.dev';
+
+        const res = await resend.emails.send({
+          from: fromAddress,
+          to: targetEmail,
+          subject,
+          html: htmlBody,
+        });
+
+        if (res.error) {
+          status = 'failed';
+          errorMessage = res.error.message;
+        } else if (res.data) {
+          externalId = res.data.id;
+        }
+      } catch (err: any) {
+        status = 'failed';
+        errorMessage = err.message;
+      }
+    } else {
+      externalId = `sim_alert_${Date.now()}`;
+    }
+
+    const [inserted] = await db
+      .insert(notifications)
+      .values({
+        workspaceId,
+        businessId,
+        type: 'alert',
+        channel: 'email',
+        recipient: recipientEmail,
+        subject,
+        body: htmlBody.substring(0, 5000),
+        status,
+        externalId,
+        sentAt: new Date(),
+      })
+      .returning();
+
+    return {
+      success: status === 'sent',
+      notificationId: inserted.id,
+      externalId: externalId || undefined,
+      error: errorMessage || undefined,
+    };
+  }
 }

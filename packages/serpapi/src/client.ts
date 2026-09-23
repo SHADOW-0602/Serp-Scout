@@ -43,6 +43,26 @@ export async function executeSerpApiRequest<T = any>(
       const status = response.status;
       const errorBody = await response.text();
 
+      // Auto-recover if SerpApi rejects a non-canonical street/mall location parameter
+      if (
+        status === 400 &&
+        url.searchParams.has('location') &&
+        (errorBody.toLowerCase().includes('location') && (errorBody.includes('Unsupported') || errorBody.includes('parameter') || errorBody.includes('Unknown')))
+      ) {
+        const rejectedLoc = url.searchParams.get('location') || '';
+        url.searchParams.delete('location');
+
+        const currentQ = url.searchParams.get('q') || '';
+        if (rejectedLoc && !currentQ.toLowerCase().includes(rejectedLoc.toLowerCase())) {
+          url.searchParams.set('q', `${currentQ} in ${rejectedLoc}`.trim());
+        }
+
+        console.warn(
+          `[SerpApi] Unsupported location '${rejectedLoc}'. Auto-recovering: removed location parameter and updated query to '${url.searchParams.get('q')}'. Retrying...`
+        );
+        continue;
+      }
+
       // Non-retryable client errors (e.g. 401 invalid API key, 400 bad query)
       if (status === 400 || status === 401 || status === 403) {
         throw new Error(`SerpApi client error (${status}): ${errorBody}`);

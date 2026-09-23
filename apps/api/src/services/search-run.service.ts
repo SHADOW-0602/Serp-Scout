@@ -11,12 +11,15 @@ import {
   searchGoogleMaps,
   searchGoogleNews,
 } from '@serp-scout/serpapi';
+import { searchTavily } from './tavily.service.js';
+import { MarketShiftService } from './market-shift.service.js';
 import { env } from '../config/env.js';
 
 export interface ExecuteSearchOptions {
   businessId: string;
   workspaceId: string;
   searchType: 'google' | 'google_maps' | 'google_news';
+  provider?: 'serpapi' | 'tavily' | 'auto';
   query: string;
   location?: string;
   language?: string;
@@ -25,11 +28,37 @@ export interface ExecuteSearchOptions {
   num?: number;
 }
 
+function resolveCountryCode(country?: string): string {
+  if (!country) return 'us';
+  const c = country.trim().toLowerCase();
+  if (c.length === 2) return c;
+  const map: Record<string, string> = {
+    india: 'in',
+    'united states': 'us',
+    usa: 'us',
+    'united kingdom': 'uk',
+    uk: 'uk',
+    canada: 'ca',
+    australia: 'au',
+    germany: 'de',
+    france: 'fr',
+    singapore: 'sg',
+    uae: 'ae',
+    'united arab emirates': 'ae',
+    netherlands: 'nl',
+    spain: 'es',
+    italy: 'it',
+    brazil: 'br',
+  };
+  return map[c] || 'us';
+}
+
 export async function executeSearchRun(options: ExecuteSearchOptions) {
   const {
     businessId,
     workspaceId,
     searchType,
+    provider = 'auto',
     query,
     location,
     language = 'en',
@@ -49,7 +78,19 @@ export async function executeSearchRun(options: ExecuteSearchOptions) {
     throw new Error(`Workspace not found: ${workspaceId}`);
   }
 
-  if (workspace.usedQuota >= workspace.monthlyQuota) {
+  // Determine actual search provider
+  // Tavily is used for organic searches when requested or available in 'auto' mode to save SerpApi tokens
+  const canUseTavily = Boolean(env.TAVILY_API_KEY) && searchType !== 'google_maps';
+  const actualProvider: 'serpapi' | 'tavily' =
+    provider === 'tavily' && canUseTavily
+      ? 'tavily'
+      : provider === 'auto' && canUseTavily
+      ? 'tavily'
+      : 'serpapi';
+
+  const costUnits = actualProvider === 'tavily' ? 0 : 1;
+
+  if (costUnits > 0 && workspace.usedQuota >= workspace.monthlyQuota) {
     throw new Error(
       `Monthly search quota exceeded (${workspace.usedQuota}/${workspace.monthlyQuota} units used). Please upgrade or wait for the next billing cycle.`
     );
@@ -71,25 +112,52 @@ export async function executeSearchRun(options: ExecuteSearchOptions) {
     .insert(searchRuns)
     .values({
       businessId,
-      provider: 'serpapi',
+      provider: actualProvider,
       searchType,
       query,
       location: location || business.city || undefined,
       language,
       device,
-      costUnits: 1,
+      costUnits,
       status: 'pending',
     })
     .returning();
+
+  const resolvedCountry = options.country && options.country !== 'us'
+    ? resolveCountryCode(options.country)
+    : resolveCountryCode(business.country || country);
 
   try {
     let rawResults: any[] = [];
     const searchLocation = location || business.city || undefined;
 
-    // 4. Dispatch search to SerpApi
-    if (searchType === 'google') {
+    // 4. Dispatch search to Tavily (zero SerpApi tokens used)
+    if (actualProvider === 'tavily' && env.TAVILY_API_KEY) {
+      const tavilyQuery = searchLocation && !query.toLowerCase().includes(searchLocation.toLowerCase())
+        ? `${query} ${searchLocation}`
+        : query;
+
+      const tavilyResults = await searchTavily({
+        query: tavilyQuery,
+        apiKey: env.TAVILY_API_KEY,
+        num,
+      });
+
+      rawResults = tavilyResults.map((r) => ({
+        resultType: 'organic',
+        rank: r.rank,
+        title: r.title,
+        url: r.url,
+        domain: r.domain,
+        businessName: r.title,
+        snippet: r.snippet,
+        serpFeatures: ['tavily_web'],
+        rawReference: r.raw,
+      }));
+    } else if (searchType === 'google') {
+      // Dispatch search to SerpApi
       const resp = await searchGoogle(
-        { query, location: searchLocation, language, country, device, num },
+        { query, location: searchLocation, language, country: resolvedCountry, device, num },
         env.SERPAPI_KEY
       );
       rawResults = resp.results.map((r) => ({
@@ -104,8 +172,12 @@ export async function executeSearchRun(options: ExecuteSearchOptions) {
         rawReference: r.raw,
       }));
     } else if (searchType === 'google_maps') {
+      const mapsQuery = searchLocation && !query.toLowerCase().includes(searchLocation.toLowerCase())
+        ? `${query} in ${searchLocation}`
+        : query;
+
       const resp = await searchGoogleMaps(
-        { query, location: searchLocation, language },
+        { query: mapsQuery, location: searchLocation, language },
         env.SERPAPI_KEY
       );
       rawResults = resp.results.map((m) => ({
@@ -123,7 +195,7 @@ export async function executeSearchRun(options: ExecuteSearchOptions) {
       }));
     } else if (searchType === 'google_news') {
       const resp = await searchGoogleNews(
-        { query, language, country },
+        { query, language, country: resolvedCountry },
         env.SERPAPI_KEY
       );
       rawResults = resp.results.map((n) => ({
@@ -168,14 +240,21 @@ export async function executeSearchRun(options: ExecuteSearchOptions) {
       .where(eq(searchRuns.id, run.id))
       .returning();
 
-    // 7. Increment workspace quota count atomically
-    await db
-      .update(workspaces)
-      .set({
-        usedQuota: sql`${workspaces.usedQuota} + 1`,
-        updatedAt: new Date(),
-      })
-      .where(eq(workspaces.id, workspaceId));
+    // 7. Increment workspace quota count atomically (only for paid providers like SerpApi)
+    if (costUnits > 0) {
+      await db
+        .update(workspaces)
+        .set({
+          usedQuota: sql`${workspaces.usedQuota} + ${costUnits}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(workspaces.id, workspaceId));
+    }
+
+    // 8. Trigger background emergency market shift check
+    MarketShiftService.analyzeBusiness(businessId).catch((err) => {
+      console.warn(`[SearchRunService] Background market shift analysis notice:`, err);
+    });
 
     return {
       run: completedRun,

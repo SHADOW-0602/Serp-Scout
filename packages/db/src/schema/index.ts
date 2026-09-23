@@ -106,6 +106,7 @@ export const competitors = pgTable('competitors', {
   confidenceScore: real('confidence_score').default(0.0).notNull(),
   status: varchar('status', { length: 50 }).default('candidate').notNull(), // 'candidate' | 'confirmed' | 'rejected' | 'indirect'
   userNotes: text('user_notes'),
+  metadata: jsonb('metadata'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -243,6 +244,7 @@ export const recommendations = pgTable('recommendations', {
   priority: varchar('priority', { length: 10 }).notNull(), // 'P0' | 'P1' | 'P2' | 'P3'
   confidence: varchar('confidence', { length: 20 }).notNull(), // 'high' | 'medium' | 'low'
   status: varchar('status', { length: 50 }).default('planned').notNull(), // 'planned' | 'in_progress' | 'completed' | 'dismissed'
+  checklist: jsonb('checklist'), // { steps: string[]; completed: boolean[] }
   ownerId: varchar('owner_id', { length: 255 }).references(() => users.id, { onDelete: 'set null' }),
   dueDate: timestamp('due_date', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -281,6 +283,36 @@ export const notifications = pgTable('notifications', {
   externalId: varchar('external_id', { length: 255 }), // e.g. Resend ID
   sentAt: timestamp('sent_at', { withTimezone: true }).defaultNow().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// 17. Report Shares (Public Tokenized Links)
+export const reportShares = pgTable('report_shares', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  reportId: uuid('report_id')
+    .references(() => reports.id, { onDelete: 'cascade' })
+    .notNull(),
+  businessId: uuid('business_id')
+    .references(() => businesses.id, { onDelete: 'cascade' })
+    .notNull(),
+  shareToken: varchar('share_token', { length: 64 }).notNull().unique(),
+  viewMode: varchar('view_mode', { length: 20 }).default('executive').notNull(), // 'executive' | 'specialist'
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// 18. Market Alerts (Emergency Market Shifts)
+export const marketAlerts = pgTable('market_alerts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  businessId: uuid('business_id')
+    .references(() => businesses.id, { onDelete: 'cascade' })
+    .notNull(),
+  type: varchar('type', { length: 50 }).notNull(), // '3pack_displacement' | 'review_spike' | 'competitor_ads' | 'critical_rank_drop'
+  severity: varchar('severity', { length: 20 }).default('critical').notNull(), // 'critical' | 'high' | 'medium'
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  details: jsonb('details'),
+  dismissed: boolean('dismissed').default(false).notNull(),
+  detectedAt: timestamp('detected_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 // Relations
@@ -328,6 +360,8 @@ export const businessesRelations = relations(businesses, ({ one, many }) => ({
   reports: many(reports),
   recommendations: many(recommendations),
   sourceEvidence: many(sourceEvidence),
+  reportShares: many(reportShares),
+  marketAlerts: many(marketAlerts),
 }));
 
 export const competitorsRelations = relations(competitors, ({ one, many }) => ({
@@ -361,6 +395,25 @@ export const reportsRelations = relations(reports, ({ one, many }) => ({
     references: [businesses.id],
   }),
   recommendations: many(recommendations),
+  shares: many(reportShares),
+}));
+
+export const reportSharesRelations = relations(reportShares, ({ one }) => ({
+  report: one(reports, {
+    fields: [reportShares.reportId],
+    references: [reports.id],
+  }),
+  business: one(businesses, {
+    fields: [reportShares.businessId],
+    references: [businesses.id],
+  }),
+}));
+
+export const marketAlertsRelations = relations(marketAlerts, ({ one }) => ({
+  business: one(businesses, {
+    fields: [marketAlerts.businessId],
+    references: [businesses.id],
+  }),
 }));
 
 export const searchRunsRelations = relations(searchRuns, ({ one, many }) => ({

@@ -139,6 +139,14 @@ export async function executeReportGeneration(data: ReportJobData) {
 
   // 8. Save recommendations & evidence
   for (const action of generatedReport.actionPlan) {
+    const steps = action.implementationSteps && action.implementationSteps.length > 0
+      ? action.implementationSteps
+      : [
+          `Review competitor positioning on ${action.searchQueries?.[0] || 'target query'}`,
+          `Draft and publish targeted copy addressing core consumer friction`,
+          `Add LocalBusiness schema markup and request Google indexing`,
+        ];
+
     const [rec] = await db
       .insert(recommendations)
       .values({
@@ -151,6 +159,10 @@ export async function executeReportGeneration(data: ReportJobData) {
         priority: action.priority,
         confidence: action.confidence,
         status: 'planned',
+        checklist: {
+          steps,
+          completed: steps.map(() => false),
+        },
         dueDate:
           action.suggestedDeadline && !isNaN(new Date(action.suggestedDeadline).getTime())
             ? new Date(action.suggestedDeadline)

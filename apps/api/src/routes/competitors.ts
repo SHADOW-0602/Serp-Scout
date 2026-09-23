@@ -17,6 +17,7 @@ import {
   RawSearchItemWithContext,
 } from '@serp-scout/agents';
 import { executeSearchRun } from '../services/search-run.service.js';
+import { env } from '../config/env.js';
 
 const router = Router();
 
@@ -69,7 +70,42 @@ router.post(
         .from(businessLocations)
         .where(eq(businessLocations.businessId, businessId));
 
-      // 2. Fetch recent search results for this business to extract candidates from
+      const city = biz.city || locs[0]?.city || undefined;
+      const targetLat = locs[0]?.latitude ? Number(locs[0].latitude) : null;
+      const targetLon = locs[0]?.longitude ? Number(locs[0].longitude) : null;
+      const coordinates = targetLat && targetLon ? { latitude: targetLat, longitude: targetLon } : null;
+
+      // 2. Multi-Query Parallel Sweep: Plan 3 concurrent searches (Service, Maps 3-Pack, Commercial Intent)
+      const planned = planCompetitorQueries({
+        businessName: biz.name,
+        category: biz.industry || undefined,
+        services: svcs.map((s) => s.name),
+        city,
+      });
+
+      const sweepQueries: Array<{
+        query: string;
+        searchType: 'google' | 'google_maps';
+        provider: 'serpapi' | 'tavily';
+      }> = [
+        {
+          query: planned.serviceQueries[0] || `${biz.name} ${city || ''}`.trim(),
+          searchType: 'google',
+          provider: env.TAVILY_API_KEY ? 'tavily' : 'serpapi',
+        },
+        {
+          query: planned.localQueries[0] || `best ${biz.industry || svcs[0]?.name || 'services'} near ${city || ''}`.trim(),
+          searchType: 'google_maps',
+          provider: 'serpapi',
+        },
+        {
+          query: planned.commercialQueries[0] || `${biz.industry || svcs[0]?.name || 'service'} cost in ${city || ''}`.trim(),
+          searchType: 'google',
+          provider: env.TAVILY_API_KEY ? 'tavily' : 'serpapi',
+        },
+      ];
+
+      // Fetch existing results to see if we should run the parallel sweep
       let existingResults = await db
         .select({
           result: searchResults,
@@ -80,25 +116,23 @@ router.post(
         .where(eq(searchRuns.businessId, businessId))
         .limit(100);
 
-      // If no search results exist yet, execute an initial search run automatically
-      if (existingResults.length === 0) {
-        const planned = planCompetitorQueries({
-          businessName: biz.name,
-          category: biz.industry || undefined,
-          services: svcs.map((s) => s.name),
-          city: biz.city || locs[0]?.city || undefined,
-        });
+      // Execute 3-query sweep concurrently if results are sparse or sweep requested
+      const shouldRunSweep = existingResults.length < 10 || req.query.fresh === 'true';
+      if (shouldRunSweep) {
+        await Promise.allSettled(
+          sweepQueries.map(({ query, searchType, provider }) =>
+            executeSearchRun({
+              businessId,
+              workspaceId,
+              searchType,
+              provider,
+              query,
+              num: 15,
+            })
+          )
+        );
 
-        const initialQuery = planned.serviceQueries[0] || `${biz.name} in ${biz.city || 'Austin'}`;
-        await executeSearchRun({
-          businessId,
-          workspaceId,
-          searchType: 'google',
-          query: initialQuery,
-          num: 15,
-        });
-
-        // Re-fetch search results
+        // Re-fetch all search results
         existingResults = await db
           .select({
             result: searchResults,
@@ -107,7 +141,7 @@ router.post(
           .from(searchResults)
           .innerJoin(searchRuns, eq(searchResults.searchRunId, searchRuns.id))
           .where(eq(searchRuns.businessId, businessId))
-          .limit(100);
+          .limit(150);
       }
 
       // 3. Format items for candidate extractor
@@ -127,22 +161,36 @@ router.post(
         },
       }));
 
-      // 4. Run Discovery Pipeline
+      // 4. Run Discovery Pipeline with Proximity, Scraping Profiler, and Threat Matrix
       const candidates = await discoverCompetitors({
         business: {
           name: biz.name,
           websiteUrl: biz.websiteUrl,
           category: biz.industry || undefined,
           services: svcs.map((s) => s.name),
-          city: biz.city || 'Austin',
+          city: city || 'Austin',
+          coordinates,
         },
         searchItems,
         maxCandidatesToEnrich: 10,
+        maxCandidatesToProfile: 6,
       });
 
-      // 5. Upsert candidates into database
+      // 5. Upsert candidates into database with enriched metadata
       const savedCompetitors = [];
       for (const cand of candidates) {
+        const metadata = {
+          threatLevel: cand.threatLevel,
+          threatReason: cand.threatReason,
+          distanceMiles: cand.distanceMiles,
+          proximityLabel: cand.proximityLabel,
+          hasAds: cand.hasAds,
+          serpOverlapPercent: cand.serpOverlapPercent,
+          extractedProfile: cand.extractedProfile,
+          rating: cand.rating,
+          reviewCount: cand.reviewCount,
+        };
+
         const [existing] = await db
           .select()
           .from(competitors)
@@ -150,20 +198,24 @@ router.post(
           .limit(1);
 
         if (existing) {
-          // Update score and category
+          // Merge metadata with existing
+          const existingMeta = (existing.metadata as Record<string, any>) || {};
+          const mergedMeta = { ...existingMeta, ...metadata };
+
           const [updated] = await db
             .update(competitors)
             .set({
               confidenceScore: cand.confidenceScore,
               competitorType: cand.competitorType,
               category: cand.category || existing.category,
+              metadata: mergedMeta,
               updatedAt: new Date(),
             })
             .where(eq(competitors.id, existing.id))
             .returning();
           savedCompetitors.push(updated);
         } else {
-          // Insert new candidate
+          // Insert new candidate with metadata
           const [inserted] = await db
             .insert(competitors)
             .values({
@@ -176,6 +228,7 @@ router.post(
               competitorType: cand.competitorType,
               confidenceScore: cand.confidenceScore,
               status: 'candidate',
+              metadata,
             })
             .returning();
           savedCompetitors.push(inserted);

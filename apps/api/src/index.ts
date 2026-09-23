@@ -11,7 +11,7 @@ import searchRunsRouter from './routes/search-runs.js';
 import competitorsRouter from './routes/competitors.js';
 import keywordsRouter from './routes/keywords.js';
 import analysisRouter from './routes/analysis.js';
-import reportsRouter from './routes/reports.js';
+import reportsRouter, { sharedReportsRouter } from './routes/reports.js';
 import schedulesRouter from './routes/schedules.js';
 import {
   startWebsiteAnalysisWorker,
@@ -48,6 +48,9 @@ app.get('/health', (_req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// Public Shared Reports Route (Token-authenticated for clients/stakeholders)
+app.use('/api/shared', sharedReportsRouter);
 
 // Protected Workspace Routes
 app.use('/api/workspaces', requireAuthenticatedUser, workspacesRouter);
@@ -94,6 +97,22 @@ if (env.NODE_ENV !== 'test') {
   });
   console.log('👷 All BullMQ Workers & Repeatable Schedulers initialized');
 }
+
+// Global JSON Error Handler - Ensures API always returns JSON responses
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Unhandled API Error:', err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  const statusCode = typeof err?.statusCode === 'number' ? err.statusCode : 500;
+  res.status(statusCode).json({
+    success: false,
+    error: {
+      code: err?.code || 'INTERNAL_SERVER_ERROR',
+      message: err?.message || 'An unexpected internal server error occurred',
+    },
+  });
+});
 
 app.listen(env.PORT, () => {
   console.log(`🚀 Serp-Scout API listening on http://localhost:${env.PORT}`);

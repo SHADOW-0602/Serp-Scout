@@ -16,7 +16,7 @@ const createWorkspaceSchema = z.object({
 
 // POST /api/workspaces - Create a new workspace
 router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  const userId = req.auth?.userId;
+  const userId = (req as any)._parsedAuth?.userId;
   if (!userId) {
     res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'User ID missing' } });
     return;
@@ -90,7 +90,7 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
 
 // GET /api/workspaces/me - Get current user's workspaces
 router.get('/me', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  const userId = req.auth?.userId;
+  const userId = (req as any)._parsedAuth?.userId;
   if (!userId) {
     res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'User ID missing' } });
     return;
@@ -129,7 +129,7 @@ router.get('/me', async (req: AuthenticatedRequest, res: Response): Promise<void
 
 // DELETE /api/workspaces/:id - Delete workspace (cascades all data)
 router.delete('/:id', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  const userId = req.auth?.userId;
+  const userId = (req as any)._parsedAuth?.userId;
   const workspaceId = String(req.params.id);
 
   if (!userId) {

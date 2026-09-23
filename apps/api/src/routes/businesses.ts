@@ -10,7 +10,99 @@ import {
 import { WorkspaceRequest } from '../middleware/workspace.js';
 import { websiteAnalysisQueue } from '../jobs/queues.js';
 
+import { env } from '../config/env.js';
+
 const router = Router();
+
+// GET /api/businesses/locations/search - Search locations & places via city, pincode, or business name
+router.get('/locations/search', async (req: WorkspaceRequest, res: Response): Promise<void> => {
+  const query = (req.query.q as string || '').trim();
+  if (!query || query.length < 2) {
+    res.json({ success: true, data: [] });
+    return;
+  }
+
+  const isNumericOrPincode = /^\d{3,6}$/.test(query);
+
+  try {
+    const results: Array<{
+      id: string;
+      name: string;
+      city?: string;
+      address?: string;
+      category?: string;
+      type: 'location' | 'place';
+      countryCode?: string;
+    }> = [];
+
+    // 1. Check SerpApi canonical locations (cities / pincodes)
+    try {
+      const locUrl = new URL('https://serpapi.com/locations.json');
+      locUrl.searchParams.set('q', query);
+      locUrl.searchParams.set('limit', '6');
+
+      const locRes = await fetch(locUrl.toString());
+      if (locRes.ok) {
+        const locData = (await locRes.json()) as any;
+        if (Array.isArray(locData)) {
+          for (const item of locData) {
+            results.push({
+              id: item.id || String(item.google_id) || item.canonical_name,
+              name: item.name,
+              city: item.canonical_name ? item.canonical_name.split(',')[0].trim() : item.name,
+              address: item.canonical_name,
+              category: item.target_type || 'Geographic Area',
+              type: 'location',
+              countryCode: item.country_code,
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('SerpApi locations query error:', e);
+    }
+
+    // 2. If user is searching a clinic, shop, landmark, or specific place (or if results < 4)
+    if (!isNumericOrPincode || results.length === 0) {
+      try {
+        const mapsUrl = new URL('https://serpapi.com/search.json');
+        mapsUrl.searchParams.set('engine', 'google_maps');
+        mapsUrl.searchParams.set('q', query);
+        mapsUrl.searchParams.set('api_key', env.SERPAPI_KEY);
+
+        const mapsRes = await fetch(mapsUrl.toString());
+        if (mapsRes.ok) {
+          const mapsData = (await mapsRes.json()) as any;
+          if (Array.isArray(mapsData?.local_results)) {
+            for (const place of mapsData.local_results.slice(0, 6)) {
+              results.push({
+                id: place.place_id || place.data_id || place.title,
+                name: place.title,
+                city: place.address ? place.address.split(',').slice(-3, -2)[0]?.trim() || query : query,
+                address: place.address || place.snippet,
+                category: place.type || 'Business / Clinic / Shop',
+                type: 'place',
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('SerpApi maps place search error:', e);
+      }
+    }
+
+    res.json({
+      success: true,
+      data: results,
+    });
+  } catch (err: any) {
+    console.error('Location search failed:', err);
+    res.status(500).json({
+      success: false,
+      error: { code: 'SEARCH_FAILED', message: err.message || 'Location search failed' },
+    });
+  }
+});
 
 // URL validation schema with safe protocol enforcement
 const safeUrlSchema = z

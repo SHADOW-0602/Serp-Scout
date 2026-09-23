@@ -98,10 +98,11 @@ Rules for Recommendations (Plan.md §5.12):
    - searchQueries: Array of 1 to 3 search terms where this problem was observed
    - expectedImpact: "high" | "medium" | "low"
    - estimatedEffort: "low" | "medium" | "high"
-   - priority: "P0" | "P1" | "P2" | "P3"
-   - confidence: "high" | "medium" | "low"
-   - suggestedOwner: e.g. "Web Developer", "Content Lead", "Practice Manager"
-   - suggestedDeadline: e.g. "Within 3 days", "Within 1 week"
+    - priority: "P0" | "P1" | "P2" | "P3"
+    - confidence: "high" | "medium" | "low"
+    - suggestedOwner: e.g. "Web Developer", "Content Lead", "Practice Manager"
+    - suggestedDeadline: e.g. "Within 3 days", "Within 1 week"
+    - implementationSteps: Array of 3 to 4 concrete, actionable sub-tasks for executing this recommendation (e.g. ["Audit current pricing anchor on hero section", "Deploy local schema markup with procedure codes", "Submit updated URL to Google Search Console"])
 
 Respond ONLY with valid JSON in this exact structure:
 {
@@ -117,7 +118,12 @@ Respond ONLY with valid JSON in this exact structure:
       "priority": "P0",
       "confidence": "high",
       "suggestedOwner": "Content Lead",
-      "suggestedDeadline": "Within 5 days"
+      "suggestedDeadline": "Within 5 days",
+      "implementationSteps": [
+        "Step 1: ...",
+        "Step 2: ...",
+        "Step 3: ..."
+      ]
     }
   ]
 }`;
@@ -147,23 +153,34 @@ Respond ONLY with valid JSON in this exact structure:
     const validPriorities = ['P0', 'P1', 'P2', 'P3'] as const;
     const validLevels = ['high', 'medium', 'low'] as const;
 
-    return capped.map((r) => ({
-      title: r.title || 'Implement Targeted SEO Optimization',
-      problem: r.problem || 'Competitors currently capture high-intent search demand.',
-      evidenceSummary: r.evidenceSummary || 'Observed ranking gaps and competitor service pages.',
-      sourceUrls: Array.isArray(r.sourceUrls) && r.sourceUrls.length > 0
-        ? r.sourceUrls
-        : [business.websiteUrl],
-      searchQueries: Array.isArray(r.searchQueries) && r.searchQueries.length > 0
-        ? r.searchQueries
-        : [business.services[0] || 'dentist near me'],
-      expectedImpact: validLevels.includes(r.expectedImpact) ? r.expectedImpact : 'high',
-      estimatedEffort: validLevels.includes(r.estimatedEffort) ? r.estimatedEffort : 'medium',
-      priority: validPriorities.includes(r.priority) ? r.priority : 'P1',
-      confidence: validLevels.includes(r.confidence) ? r.confidence : 'high',
-      suggestedOwner: r.suggestedOwner || 'Practice Lead',
-      suggestedDeadline: r.suggestedDeadline || 'Within 7 days',
-    }));
+    return capped.map((r) => {
+      const defaultSteps = [
+        `Review competitor positioning on ${r.searchQueries?.[0] || 'target query'}`,
+        `Draft and publish optimized landing copy addressing customer pain points`,
+        `Add LocalBusiness schema markup and request Google indexing`,
+      ];
+
+      return {
+        title: r.title || 'Implement Targeted SEO Optimization',
+        problem: r.problem || 'Competitors currently capture high-intent search demand.',
+        evidenceSummary: r.evidenceSummary || 'Observed ranking gaps and competitor service pages.',
+        sourceUrls: Array.isArray(r.sourceUrls) && r.sourceUrls.length > 0
+          ? r.sourceUrls
+          : [business.websiteUrl],
+        searchQueries: Array.isArray(r.searchQueries) && r.searchQueries.length > 0
+          ? r.searchQueries
+          : [business.services[0] || 'dentist near me'],
+        expectedImpact: validLevels.includes(r.expectedImpact) ? r.expectedImpact : 'high',
+        estimatedEffort: validLevels.includes(r.estimatedEffort) ? r.estimatedEffort : 'medium',
+        priority: validPriorities.includes(r.priority) ? r.priority : 'P1',
+        confidence: validLevels.includes(r.confidence) ? r.confidence : 'high',
+        suggestedOwner: r.suggestedOwner || 'Practice Lead',
+        suggestedDeadline: r.suggestedDeadline || 'Within 7 days',
+        implementationSteps: Array.isArray(r.implementationSteps) && r.implementationSteps.length > 0
+          ? r.implementationSteps
+          : defaultSteps,
+      };
+    });
   } catch (err) {
     console.error('Failed to generate recommendations with Groq:', err);
 
@@ -184,6 +201,11 @@ Respond ONLY with valid JSON in this exact structure:
         confidence: 'high',
         suggestedOwner: 'Content Lead',
         suggestedDeadline: 'Within 5 days',
+        implementationSteps: [
+          `Draft dedicated ${topGap.topic} service landing page with local pricing`,
+          `Embed FAQ section addressing high-frequency patient questions`,
+          `Implement LocalBusiness schema markup and link from homepage navigation`,
+        ],
       });
     }
 
@@ -201,6 +223,11 @@ Respond ONLY with valid JSON in this exact structure:
         confidence: 'high',
         suggestedOwner: 'SEO Specialist',
         suggestedDeadline: 'Within 3 days',
+        implementationSteps: [
+          `Audit on-page H1, meta title, and intro paragraph for "${topKw.phrase}"`,
+          `Add 2-3 internal contextual links with descriptive anchor text`,
+          `Inspect competitor ${topKw.bestCompetitorDomain || 'rival'} page structure for content parity`,
+        ],
       });
     }
 

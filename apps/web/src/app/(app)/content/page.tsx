@@ -4,6 +4,17 @@ import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { apiClient } from '@/lib/api';
+import {
+  Sparkles,
+  Megaphone,
+  Star,
+  X,
+  Newspaper,
+  TrendingUp,
+  FileText,
+  Check,
+  AlertTriangle,
+} from 'lucide-react';
 
 interface BusinessSummary {
   id: string;
@@ -117,6 +128,46 @@ export default function ContentAndAnalysisPage() {
   const [reviewData, setReviewData] = useState<ReviewAnalysisData | null>(null);
   const [newsSignals, setNewsSignals] = useState<NewsSignalItem[]>([]);
   const [changeData, setChangeData] = useState<ChangeDetectionData | null>(null);
+  const autoTriggeredGapsRef = React.useRef<Set<string>>(new Set());
+
+  // Instant cache retrieval on business change
+  useEffect(() => {
+    if (!selectedBizId || typeof window === 'undefined') return;
+
+    try {
+      const cachedGaps = localStorage.getItem(`content_gaps_${selectedBizId}`);
+      if (cachedGaps) {
+        const parsed = JSON.parse(cachedGaps);
+        if (Array.isArray(parsed) && parsed.length > 0) setContentGapsList(parsed);
+      }
+
+      const cachedMessaging = localStorage.getItem(`content_messaging_${selectedBizId}`);
+      if (cachedMessaging) {
+        const parsed = JSON.parse(cachedMessaging);
+        if (parsed) setMessagingData(parsed);
+      }
+
+      const cachedReviews = localStorage.getItem(`content_reviews_${selectedBizId}`);
+      if (cachedReviews) {
+        const parsed = JSON.parse(cachedReviews);
+        if (parsed) setReviewData(parsed);
+      }
+
+      const cachedNews = localStorage.getItem(`content_news_${selectedBizId}`);
+      if (cachedNews) {
+        const parsed = JSON.parse(cachedNews);
+        if (Array.isArray(parsed)) setNewsSignals(parsed);
+      }
+
+      const cachedChanges = localStorage.getItem(`content_changes_${selectedBizId}`);
+      if (cachedChanges) {
+        const parsed = JSON.parse(cachedChanges);
+        if (parsed) setChangeData(parsed);
+      }
+    } catch (e) {
+      console.error('Failed to read content cache:', e);
+    }
+  }, [selectedBizId]);
 
   // Load business list
   useEffect(() => {
@@ -136,6 +187,34 @@ export default function ContentAndAnalysisPage() {
     loadBusinesses();
   }, [getToken]);
 
+  // Trigger Content Gap Analysis
+  const handleRunContentGaps = useCallback(async (targetBizId?: string) => {
+    const bizId = targetBizId || selectedBizId;
+    if (!bizId) return;
+    setAnalyzingGaps(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const res = await apiClient<{ count: number; contentGaps: ContentGapItem[] }>(
+        `/api/businesses/${bizId}/analysis/content-gaps`,
+        { method: 'POST', token }
+      );
+      setSuccessMsg(`Identified ${res.count} actionable content gaps!`);
+      const refreshed = await apiClient<ContentGapItem[]>(`/api/businesses/${bizId}/analysis/content-gaps`, { token });
+      setContentGapsList(refreshed);
+      try {
+        localStorage.setItem(`content_gaps_${bizId}`, JSON.stringify(refreshed));
+      } catch {}
+    } catch (err: any) {
+      console.error('Content gap error:', err);
+      setError(err.message || 'Failed to analyze content gaps');
+    } finally {
+      setAnalyzingGaps(false);
+    }
+  }, [selectedBizId, getToken]);
+
   // Load existing Content Gaps
   const loadContentGaps = useCallback(async () => {
     if (!selectedBizId) return;
@@ -145,42 +224,28 @@ export default function ContentAndAnalysisPage() {
       if (!token) return;
       const gaps = await apiClient<ContentGapItem[]>(`/api/businesses/${selectedBizId}/analysis/content-gaps`, { token });
       setContentGapsList(gaps);
+      try {
+        localStorage.setItem(`content_gaps_${selectedBizId}`, JSON.stringify(gaps));
+      } catch {}
+
+      // Auto-trigger if 0 content gaps found
+      if (gaps.length === 0 && !autoTriggeredGapsRef.current.has(selectedBizId)) {
+        autoTriggeredGapsRef.current.add(selectedBizId);
+        handleRunContentGaps(selectedBizId);
+      }
     } catch (err: any) {
       console.error('Failed to load content gaps:', err);
     } finally {
       setLoading(false);
     }
-  }, [selectedBizId, getToken]);
+  }, [selectedBizId, getToken, handleRunContentGaps]);
 
   useEffect(() => {
     loadContentGaps();
   }, [selectedBizId, loadContentGaps]);
 
-  // Trigger Content Gap Analysis
-  const handleRunContentGaps = async () => {
-    if (!selectedBizId) return;
-    setAnalyzingGaps(true);
-    setError(null);
-    setSuccessMsg(null);
-    try {
-      const token = await getToken();
-      if (!token) return;
-      const res = await apiClient<{ count: number; contentGaps: ContentGapItem[] }>(
-        `/api/businesses/${selectedBizId}/analysis/content-gaps`,
-        { method: 'POST', token }
-      );
-      setSuccessMsg(`Identified ${res.count} actionable content gaps!`);
-      await loadContentGaps();
-    } catch (err: any) {
-      console.error('Content gap error:', err);
-      setError(err.message || 'Failed to analyze content gaps');
-    } finally {
-      setAnalyzingGaps(false);
-    }
-  };
-
   // Trigger Competitor Messaging Analysis
-  const handleRunMessaging = async () => {
+  const handleRunMessaging = useCallback(async () => {
     if (!selectedBizId) return;
     setAnalyzingMessaging(true);
     setError(null);
@@ -192,6 +257,9 @@ export default function ContentAndAnalysisPage() {
         token,
       });
       setMessagingData(res);
+      try {
+        localStorage.setItem(`content_messaging_${selectedBizId}`, JSON.stringify(res));
+      } catch {}
       setActiveTab('messaging');
     } catch (err: any) {
       console.error('Messaging error:', err);
@@ -199,10 +267,10 @@ export default function ContentAndAnalysisPage() {
     } finally {
       setAnalyzingMessaging(false);
     }
-  };
+  }, [selectedBizId, getToken]);
 
   // Trigger Customer Review Analysis
-  const handleRunReviews = async () => {
+  const handleRunReviews = useCallback(async () => {
     if (!selectedBizId) return;
     setAnalyzingReviews(true);
     setError(null);
@@ -214,6 +282,9 @@ export default function ContentAndAnalysisPage() {
         token,
       });
       setReviewData(res);
+      try {
+        localStorage.setItem(`content_reviews_${selectedBizId}`, JSON.stringify(res));
+      } catch {}
       setActiveTab('reviews');
     } catch (err: any) {
       console.error('Review error:', err);
@@ -221,10 +292,10 @@ export default function ContentAndAnalysisPage() {
     } finally {
       setAnalyzingReviews(false);
     }
-  };
+  }, [selectedBizId, getToken]);
 
   // Trigger News Signals Analysis
-  const handleRunNews = async () => {
+  const handleRunNews = useCallback(async () => {
     if (!selectedBizId) return;
     setAnalyzingNews(true);
     setError(null);
@@ -236,6 +307,9 @@ export default function ContentAndAnalysisPage() {
         token,
       });
       setNewsSignals(res);
+      try {
+        localStorage.setItem(`content_news_${selectedBizId}`, JSON.stringify(res));
+      } catch {}
       setActiveTab('news');
     } catch (err: any) {
       console.error('News error:', err);
@@ -243,10 +317,10 @@ export default function ContentAndAnalysisPage() {
     } finally {
       setAnalyzingNews(false);
     }
-  };
+  }, [selectedBizId, getToken]);
 
   // Trigger Change Detection
-  const handleRunChanges = async () => {
+  const handleRunChanges = useCallback(async () => {
     if (!selectedBizId) return;
     setAnalyzingChanges(true);
     setError(null);
@@ -258,6 +332,9 @@ export default function ContentAndAnalysisPage() {
         token,
       });
       setChangeData(res);
+      try {
+        localStorage.setItem(`content_changes_${selectedBizId}`, JSON.stringify(res));
+      } catch {}
       setActiveTab('changes');
     } catch (err: any) {
       console.error('Change detection error:', err);
@@ -265,7 +342,7 @@ export default function ContentAndAnalysisPage() {
     } finally {
       setAnalyzingChanges(false);
     }
-  };
+  }, [selectedBizId, getToken]);
 
   // Update Gap Status
   const handleUpdateGapStatus = async (gapId: string, status: 'open' | 'in_progress' | 'completed' | 'dismissed') => {
@@ -318,11 +395,12 @@ export default function ContentAndAnalysisPage() {
           )}
 
           <button
-            onClick={handleRunContentGaps}
+            onClick={() => handleRunContentGaps()}
             disabled={analyzingGaps || !selectedBizId}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 text-white hover:opacity-95 shadow-sm transition-all disabled:opacity-50"
           >
-            {analyzingGaps ? 'Analyzing Gaps...' : '✨ Find Content Gaps'}
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>{analyzingGaps ? 'Analyzing Gaps...' : 'Find Content Gaps'}</span>
           </button>
 
           <button
@@ -330,7 +408,8 @@ export default function ContentAndAnalysisPage() {
             disabled={analyzingMessaging || !selectedBizId}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 shadow-xs transition-colors disabled:opacity-50"
           >
-            {analyzingMessaging ? 'Scanning...' : '📣 Messaging'}
+            <Megaphone className="w-3.5 h-3.5" />
+            <span>{analyzingMessaging ? 'Scanning...' : 'Messaging'}</span>
           </button>
 
           <button
@@ -338,7 +417,8 @@ export default function ContentAndAnalysisPage() {
             disabled={analyzingReviews || !selectedBizId}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 shadow-xs transition-colors disabled:opacity-50"
           >
-            {analyzingReviews ? 'Extracting...' : '⭐ Reviews (VoC)'}
+            <Star className="w-3.5 h-3.5" />
+            <span>{analyzingReviews ? 'Extracting...' : 'Reviews (VoC)'}</span>
           </button>
         </div>
       </div>
@@ -347,14 +427,18 @@ export default function ContentAndAnalysisPage() {
       {error && (
         <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-xl text-xs font-medium flex items-center justify-between animate-fade-in shadow-xs">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-rose-500 font-bold ml-2">✕</button>
+          <button onClick={() => setError(null)} className="text-rose-500 hover:text-rose-700 ml-2">
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 
       {successMsg && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl text-xs font-medium flex items-center justify-between animate-fade-in shadow-xs">
           <span>{successMsg}</span>
-          <button onClick={() => setSuccessMsg(null)} className="text-emerald-600 font-bold ml-2">✕</button>
+          <button onClick={() => setSuccessMsg(null)} className="text-emerald-600 hover:text-emerald-800 ml-2">
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 
@@ -413,52 +497,56 @@ export default function ContentAndAnalysisPage() {
               if (!messagingData) handleRunMessaging();
               else setActiveTab('messaging');
             }}
-            className={`py-3 text-xs font-semibold border-b-2 transition-colors ${
+            className={`py-3 text-xs font-semibold border-b-2 transition-colors inline-flex items-center gap-1.5 ${
               activeTab === 'messaging'
                 ? 'border-indigo-600 text-indigo-600'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            Competitor Messaging Patterns 📣
+            <Megaphone className="w-3.5 h-3.5" />
+            <span>Competitor Messaging Patterns</span>
           </button>
           <button
             onClick={() => {
               if (!reviewData) handleRunReviews();
               else setActiveTab('reviews');
             }}
-            className={`py-3 text-xs font-semibold border-b-2 transition-colors ${
+            className={`py-3 text-xs font-semibold border-b-2 transition-colors inline-flex items-center gap-1.5 ${
               activeTab === 'reviews'
                 ? 'border-indigo-600 text-indigo-600'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            Review Voice (VoC) ⭐
+            <Star className="w-3.5 h-3.5" />
+            <span>Review Voice (VoC)</span>
           </button>
           <button
             onClick={() => {
               if (newsSignals.length === 0) handleRunNews();
               else setActiveTab('news');
             }}
-            className={`py-3 text-xs font-semibold border-b-2 transition-colors ${
+            className={`py-3 text-xs font-semibold border-b-2 transition-colors inline-flex items-center gap-1.5 ${
               activeTab === 'news'
                 ? 'border-indigo-600 text-indigo-600'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            Market News Signals 📰
+            <Newspaper className="w-3.5 h-3.5" />
+            <span>Market News Signals</span>
           </button>
           <button
             onClick={() => {
               if (!changeData) handleRunChanges();
               else setActiveTab('changes');
             }}
-            className={`py-3 text-xs font-semibold border-b-2 transition-colors ${
+            className={`py-3 text-xs font-semibold border-b-2 transition-colors inline-flex items-center gap-1.5 ${
               activeTab === 'changes'
                 ? 'border-indigo-600 text-indigo-600'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            SERP Change Detection 📈
+            <TrendingUp className="w-3.5 h-3.5" />
+            <span>SERP Change Detection</span>
           </button>
         </nav>
       </div>
@@ -470,13 +558,17 @@ export default function ContentAndAnalysisPage() {
             <div className="p-12 text-center text-sm text-slate-400">Loading content gaps...</div>
           ) : contentGapsList.length === 0 ? (
             <div className="bg-white rounded-xl border border-slate-200 p-12 text-center shadow-sm">
-              <div className="text-3xl mb-3">📝</div>
+              <div className="flex items-center justify-center mb-3">
+                <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-xs">
+                  <FileText className="w-6 h-6" />
+                </div>
+              </div>
               <h3 className="text-sm font-semibold text-slate-800">No Content Gaps Detected Yet</h3>
               <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
                 Compare your site against confirmed competitors to discover missing high-value service pages, location guides, and customer FAQs.
               </p>
               <button
-                onClick={handleRunContentGaps}
+                onClick={() => handleRunContentGaps()}
                 disabled={analyzingGaps}
                 className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 shadow-sm"
               >
@@ -689,7 +781,8 @@ export default function ContentAndAnalysisPage() {
                   <ul className="space-y-1 text-xs text-emerald-900">
                     {reviewData.commonPraise.map((p, i) => (
                       <li key={i} className="flex items-center gap-1.5">
-                        <span className="text-emerald-600 font-bold">✓</span> {p}
+                        <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>{p}</span>
                       </li>
                     ))}
                   </ul>
@@ -700,7 +793,8 @@ export default function ContentAndAnalysisPage() {
                   <ul className="space-y-1 text-xs text-rose-900">
                     {reviewData.commonComplaints.map((c, i) => (
                       <li key={i} className="flex items-center gap-1.5">
-                        <span className="text-rose-600 font-bold">⚠</span> {c}
+                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                        <span>{c}</span>
                       </li>
                     ))}
                   </ul>
@@ -754,7 +848,11 @@ export default function ContentAndAnalysisPage() {
             <div className="p-12 text-center text-sm text-slate-400">Scanning news signals...</div>
           ) : newsSignals.length === 0 ? (
             <div className="bg-white rounded-xl border border-slate-200 p-12 text-center shadow-sm">
-              <div className="text-3xl mb-3">📰</div>
+              <div className="flex items-center justify-center mb-3">
+                <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-xs">
+                  <Newspaper className="w-6 h-6" />
+                </div>
+              </div>
               <h3 className="text-sm font-semibold text-slate-800">No News Signals Found</h3>
               <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
                 Scan Google News for industry expansion, competitor activity, and local market trends.

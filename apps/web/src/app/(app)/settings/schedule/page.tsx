@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
 import { apiClient } from '@/lib/api';
+import { Zap, Check, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 interface ScheduleSettings {
   workspaceId: string;
@@ -187,7 +188,10 @@ export default function ScheduleSettingsPage() {
                 Dispatching Research...
               </>
             ) : (
-              <>⚡ Run Immediate Refresh Now</>
+              <span className="inline-flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 fill-white" />
+                <span>Run Immediate Refresh Now</span>
+              </span>
             )}
           </button>
         </div>
@@ -207,7 +211,8 @@ export default function ScheduleSettingsPage() {
 
       {saveSuccess && (
         <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-sm text-emerald-800 font-medium flex items-center gap-2">
-          <span>✓</span> Schedule and notification preferences updated successfully!
+          <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>Schedule and notification preferences updated successfully!</span>
         </div>
       )}
 
@@ -221,7 +226,11 @@ export default function ScheduleSettingsPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <span className="text-xl">
-                {schedule.primaryBusiness.dataStale ? '⚠️' : '✅'}
+                {schedule.primaryBusiness.dataStale ? (
+                  <AlertTriangle className="w-5 h-5 text-amber-600" />
+                ) : (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                )}
               </span>
               <div>
                 <h3 className="text-sm font-bold">
@@ -422,8 +431,9 @@ export default function ScheduleSettingsPage() {
                       </td>
                       <td className="py-3 px-3 font-sans">
                         {isFailed ? (
-                          <span className="text-rose-700 font-medium">
-                            ⚠️ {job.failedReason || 'Unknown failure'}
+                          <span className="text-rose-700 font-medium inline-flex items-center gap-1">
+                            <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                            <span>{job.failedReason || 'Unknown failure'}</span>
                           </span>
                         ) : isCompleted ? (
                           <span className="text-emerald-700">Completed successfully</span>

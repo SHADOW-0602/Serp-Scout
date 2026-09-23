@@ -13,6 +13,10 @@ import {
   ArrowRight,
   ShieldCheck,
   CheckCircle2,
+  Rocket,
+  Search,
+  Building,
+  Loader2,
 } from 'lucide-react';
 
 interface OnboardingFormData {
@@ -26,12 +30,77 @@ interface OnboardingFormData {
   primaryGoal: string;
 }
 
-const PRIMARY_GOALS = [
-  'More qualified phone calls & inquiries',
-  'More online bookings or quote requests',
-  'Improved local Google Maps Pack visibility',
-  'Outrank direct local competitors',
-  'Fix content gaps and missing service pages',
+const COUNTRIES = [
+  'India',
+  'United States',
+  'United Kingdom',
+  'Canada',
+  'Australia',
+  'United Arab Emirates',
+  'Singapore',
+  'Germany',
+  'France',
+  'Netherlands',
+  'Spain',
+  'Italy',
+  'Brazil',
+  'Mexico',
+  'South Africa',
+  'New Zealand',
+  'Ireland',
+  'Philippines',
+  'Indonesia',
+  'Malaysia',
+  'Saudi Arabia',
+  'Switzerland',
+  'Sweden',
+  'Other',
+];
+
+interface SeoGoalOption {
+  id: string;
+  label: string;
+  badge: string;
+  description: string;
+}
+
+const SEO_GOALS: SeoGoalOption[] = [
+  {
+    id: 'calls',
+    label: 'More qualified phone calls & inquiries',
+    badge: 'Immediate ROI',
+    description: 'Capture high-intent local emergency and direct call queries in search results.',
+  },
+  {
+    id: 'maps',
+    label: 'Improved local Google Maps Pack visibility',
+    badge: 'Map 3-Pack',
+    description: 'Rank in top 3 local map spots across targeted neighborhood zones.',
+  },
+  {
+    id: 'rivals',
+    label: 'Outrank direct local competitors',
+    badge: 'Competitive',
+    description: 'Isolate key local rivals and conquer their displaced appointments & search traffic.',
+  },
+  {
+    id: 'keywords',
+    label: 'Win striking-distance keywords (Pos 4–15)',
+    badge: 'Quick Wins',
+    description: 'Identify keywords on the cusp of Page 1 and boost them into top positions.',
+  },
+  {
+    id: 'content',
+    label: 'Fix content gaps and missing service pages',
+    badge: 'Content Gap',
+    description: 'Detect missing service pages, schema markup, and topics that rivals rank for.',
+  },
+  {
+    id: 'bookings',
+    label: 'More online bookings or quote requests',
+    badge: 'Conversions',
+    description: 'Optimize discovery for customers ready to book appointments or request quotes.',
+  },
 ];
 
 const INDUSTRIES = [
@@ -58,16 +127,39 @@ export default function OnboardingPage() {
   const [selectedIndustry, setSelectedIndustry] = useState<string>('Dental & Healthcare');
   const [customIndustry, setCustomIndustry] = useState<string>('');
 
+  const [selectedCountry, setSelectedCountry] = useState<string>('India');
+  const [customCountry, setCustomCountry] = useState<string>('');
+
+  const [selectedGoals, setSelectedGoals] = useState<string[]>([
+    'More qualified phone calls & inquiries',
+    'Improved local Google Maps Pack visibility',
+    'Outrank direct local competitors',
+  ]);
+
   const [formData, setFormData] = useState<OnboardingFormData>({
     businessName: '',
     websiteUrl: '',
     industry: 'Dental & Healthcare',
-    country: 'United States',
+    country: 'India',
     city: '',
     serviceArea: '',
     servicesInput: '',
-    primaryGoal: PRIMARY_GOALS[0],
+    primaryGoal: 'More qualified phone calls & inquiries; Improved local Google Maps Pack visibility; Outrank direct local competitors',
   });
+
+  // Location Autocomplete Search State (City / Pincode / Place)
+  const [locationQuery, setLocationQuery] = useState('');
+  const [locationSuggestions, setLocationSuggestions] = useState<Array<{
+    id: string;
+    name: string;
+    city?: string;
+    address?: string;
+    category?: string;
+    type: 'location' | 'place';
+  }>>([]);
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
+  const locationDebounceTimer = React.useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -126,6 +218,95 @@ export default function OnboardingPage() {
     setFormData((prev) => ({ ...prev, industry: val.trim() || 'Other' }));
   };
 
+  const handleCountryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    setSelectedCountry(val);
+    if (val !== 'Other') {
+      setFormData((prev) => ({ ...prev, country: val }));
+    } else {
+      setFormData((prev) => ({ ...prev, country: customCountry.trim() || 'Other' }));
+    }
+  };
+
+  const handleCustomCountryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setCustomCountry(val);
+    setFormData((prev) => ({ ...prev, country: val.trim() || 'Other' }));
+  };
+
+  const handleLocationInputChange = (val: string) => {
+    setLocationQuery(val);
+    setFormData((prev) => ({ ...prev, city: val, serviceArea: val }));
+    setShowLocationDropdown(true);
+
+    if (locationDebounceTimer.current) {
+      clearTimeout(locationDebounceTimer.current);
+    }
+
+    if (!val || val.trim().length < 2) {
+      setLocationSuggestions([]);
+      setIsSearchingLocation(false);
+      return;
+    }
+
+    setIsSearchingLocation(true);
+    locationDebounceTimer.current = setTimeout(async () => {
+      try {
+        const token = await getToken();
+        if (!token) return;
+        const res = await apiClient<Array<{
+          id: string;
+          name: string;
+          city?: string;
+          address?: string;
+          category?: string;
+          type: 'location' | 'place';
+        }>>(`/api/businesses/locations/search?q=${encodeURIComponent(val.trim())}`, { token });
+        setLocationSuggestions(res || []);
+      } catch (err) {
+        console.error('Location search error:', err);
+      } finally {
+        setIsSearchingLocation(false);
+      }
+    }, 350);
+  };
+
+  const handleSelectLocation = (item: {
+    name: string;
+    city?: string;
+    address?: string;
+    category?: string;
+  }) => {
+    const resolvedCity = item.city || item.name;
+    const resolvedArea = item.address || item.name;
+    setLocationQuery(resolvedCity);
+    setFormData((prev) => ({
+      ...prev,
+      city: resolvedCity,
+      serviceArea: resolvedArea,
+    }));
+    setShowLocationDropdown(false);
+  };
+
+  const toggleGoal = (goalLabel: string) => {
+    setSelectedGoals((prev) => {
+      if (prev.includes(goalLabel)) {
+        if (prev.length === 1) return prev; // keep at least 1 selected
+        return prev.filter((g) => g !== goalLabel);
+      } else {
+        return [...prev, goalLabel];
+      }
+    });
+  };
+
+  const toggleAllGoals = () => {
+    if (selectedGoals.length === SEO_GOALS.length) {
+      setSelectedGoals([SEO_GOALS[0].label]);
+    } else {
+      setSelectedGoals(SEO_GOALS.map((g) => g.label));
+    }
+  };
+
   const validateStep1 = () => {
     if (!formData.businessName.trim()) {
       setError('Business name is required.');
@@ -158,6 +339,19 @@ export default function OnboardingPage() {
       setError('City/location is required for local competitive analysis.');
       return false;
     }
+    if (selectedCountry === 'Other' && !customCountry.trim()) {
+      setError('Please specify your country.');
+      return false;
+    }
+    setError(null);
+    return true;
+  };
+
+  const validateStep3 = () => {
+    if (selectedGoals.length === 0) {
+      setError('Please select at least one SEO goal.');
+      return false;
+    }
     setError(null);
     return true;
   };
@@ -169,6 +363,7 @@ export default function OnboardingPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateStep3()) return;
     setLoading(true);
     setError(null);
 
@@ -229,8 +424,15 @@ export default function OnboardingPage() {
           ? (customIndustry.trim() || 'Other')
           : (formData.industry || selectedIndustry);
 
+      const effectiveCountry =
+        selectedCountry === 'Other'
+          ? (customCountry.trim() || 'Other')
+          : (formData.country || selectedCountry);
+
+      const effectiveGoals = selectedGoals.join('; ');
+
       // 3. Create Business profile
-      await apiClient('/api/businesses', {
+      const bizRes = await apiClient<{ id: string } | any>('/api/businesses', {
         token,
         workspaceId,
         method: 'POST',
@@ -239,22 +441,47 @@ export default function OnboardingPage() {
           websiteUrl: formattedUrl,
           industry: effectiveIndustry,
           city: formData.city,
-          country: formData.country,
+          country: effectiveCountry,
           serviceArea: formData.serviceArea || formData.city,
-          primaryGoal: formData.primaryGoal,
+          primaryGoal: effectiveGoals,
           locations: [
             {
               name: `${formData.city} Primary Location`,
               city: formData.city,
-              country: formData.country,
+              country: effectiveCountry,
             },
           ],
           services: servicesList,
         }),
       });
 
-      // Redirect to the overview dashboard
-      router.push('/app');
+      const createdBusinessId = bizRes?.id || bizRes?.data?.id;
+
+      // 4. Automatically trigger website analysis in the background
+      let jobId: string | null = null;
+      if (createdBusinessId) {
+        try {
+          const analyzeRes = await apiClient<{ jobId?: string; data?: { jobId?: string } }>(
+            `/api/businesses/${createdBusinessId}/analyze`,
+            {
+              token,
+              workspaceId,
+              method: 'POST',
+            }
+          );
+          jobId = analyzeRes?.jobId || analyzeRes?.data?.jobId || null;
+        } catch (analyzeErr) {
+          console.warn('Auto-analysis background dispatch notice:', analyzeErr);
+        }
+      }
+
+      // 5. Route to overview dashboard with auto-analysis parameters
+      const navParams = new URLSearchParams();
+      navParams.set('auto_analyze', 'true');
+      if (createdBusinessId) navParams.set('biz_id', createdBusinessId);
+      if (jobId) navParams.set('job_id', jobId);
+
+      router.push(`/app?${navParams.toString()}`);
     } catch (err: any) {
       console.error('Onboarding submission failed:', err);
       setError(err.message || 'Failed to complete onboarding. Please try again.');
@@ -487,33 +714,102 @@ export default function OnboardingPage() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
+                <div className="relative">
                   <label className="block text-sm font-semibold text-slate-700 mb-1">
-                    City / Metro Area *
+                    City, Pincode, or Clinic/Shop Location *
                   </label>
-                  <input
-                    type="text"
-                    name="city"
-                    value={formData.city}
-                    onChange={handleInputChange}
-                    placeholder="e.g. Austin, TX or Koramangala"
-                    className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      name="city"
+                      value={locationQuery || formData.city}
+                      onChange={(e) => handleLocationInputChange(e.target.value)}
+                      onFocus={() => {
+                        if (locationSuggestions.length > 0) setShowLocationDropdown(true);
+                      }}
+                      placeholder="e.g. Indirapuram, 201014, or Clove Dental"
+                      className="w-full pl-9 pr-8 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                      required
+                    />
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    {isSearchingLocation && (
+                      <Loader2 className="w-4 h-4 text-indigo-600 animate-spin absolute right-3 top-1/2 -translate-y-1/2" />
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Search by city name, postal pincode, or business landmark to auto-detect canonical location.
+                  </p>
+
+                  {/* Autocomplete Dropdown */}
+                  {showLocationDropdown && locationSuggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-64 overflow-y-auto divide-y divide-slate-100 animate-in fade-in slide-in-from-top-1 duration-150">
+                      {locationSuggestions.map((item) => (
+                        <div
+                          key={item.id}
+                          onClick={() => handleSelectLocation(item)}
+                          className="p-3 hover:bg-indigo-50/60 cursor-pointer transition flex items-start gap-2.5 text-left"
+                        >
+                          <div className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${
+                            item.type === 'place'
+                              ? 'bg-amber-50 text-amber-600 border border-amber-200'
+                              : 'bg-indigo-50 text-indigo-600 border border-indigo-200'
+                          }`}>
+                            {item.type === 'place' ? (
+                              <Building className="w-3.5 h-3.5" />
+                            ) : (
+                              <MapPin className="w-3.5 h-3.5" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-slate-900 truncate">
+                                {item.name}
+                              </span>
+                              <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 shrink-0">
+                                {item.category}
+                              </span>
+                            </div>
+                            {item.address && (
+                              <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                                {item.address}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1">
-                    Country
+                    Country *
                   </label>
-                  <input
-                    type="text"
+                  <select
                     name="country"
-                    value={formData.country}
-                    onChange={handleInputChange}
-                    placeholder="e.g. United States or India"
-                    className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                  />
+                    value={selectedCountry}
+                    onChange={handleCountryChange}
+                    className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-white"
+                  >
+                    {COUNTRIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+
+                  {selectedCountry === 'Other' && (
+                    <div className="mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <input
+                        type="text"
+                        value={customCountry}
+                        onChange={handleCustomCountryChange}
+                        placeholder="Enter your country name"
+                        className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-white"
+                        autoFocus
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -556,34 +852,63 @@ export default function OnboardingPage() {
           {/* STEP 3 */}
           {step === 3 && (
             <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-900">What is your primary goal?</h2>
-                <p className="text-sm text-slate-500 mt-1">
-                  Serp-Scout tailors your weekly 3 SEO actions toward real business outcomes.
-                </p>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900">What are your SEO goals?</h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Select multiple options. Serp-Scout aligns rank audits, keyword opportunities, and weekly tasks to your selected targets.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleAllGoals}
+                  className="self-start sm:self-auto text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg transition"
+                >
+                  {selectedGoals.length === SEO_GOALS.length ? 'Clear All' : 'Select All'} ({selectedGoals.length}/{SEO_GOALS.length})
+                </button>
               </div>
 
-              <div className="space-y-2.5">
-                {PRIMARY_GOALS.map((goal) => (
-                  <label
-                    key={goal}
-                    className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition ${
-                      formData.primaryGoal === goal
-                        ? 'border-indigo-600 bg-indigo-50/50 text-indigo-900 font-medium'
-                        : 'border-slate-200 hover:border-slate-300 text-slate-700'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="primaryGoal"
-                      value={goal}
-                      checked={formData.primaryGoal === goal}
-                      onChange={handleInputChange}
-                      className="text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <span className="text-sm">{goal}</span>
-                  </label>
-                ))}
+              <div className="grid grid-cols-1 gap-3">
+                {SEO_GOALS.map((goal) => {
+                  const isChecked = selectedGoals.includes(goal.label);
+                  return (
+                    <div
+                      key={goal.id}
+                      onClick={() => toggleGoal(goal.label)}
+                      className={`p-4 rounded-xl border cursor-pointer transition-all duration-200 flex items-start gap-3.5 ${
+                        isChecked
+                          ? 'border-indigo-600 bg-indigo-50/50 shadow-xs'
+                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => {}}
+                        className="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 pointer-events-none"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className={`text-sm font-bold ${isChecked ? 'text-indigo-950' : 'text-slate-800'}`}>
+                            {goal.label}
+                          </span>
+                          <span
+                            className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
+                              isChecked
+                                ? 'bg-indigo-100/90 text-indigo-800 border-indigo-200'
+                                : 'bg-slate-100 text-slate-600 border-slate-200'
+                            }`}
+                          >
+                            {goal.badge}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                          {goal.description}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="flex justify-between items-center pt-4">
@@ -598,15 +923,18 @@ export default function OnboardingPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-8 py-3 rounded-lg bg-indigo-600 text-white font-semibold text-sm hover:bg-indigo-700 transition disabled:opacity-50 flex items-center gap-2"
+                  className="px-8 py-3 rounded-lg bg-indigo-600 text-white font-semibold text-sm hover:bg-indigo-700 transition disabled:opacity-50 flex items-center gap-2 shadow-md shadow-indigo-600/20"
                 >
                   {loading ? (
                     <>
                       <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                      Setting up your workspace...
+                      Launching Scout &amp; Running Analysis...
                     </>
                   ) : (
-                    'Complete Setup & Launch 🚀'
+                    <span className="inline-flex items-center gap-1.5">
+                      <span>Complete Setup &amp; Launch</span>
+                      <Rocket className="w-4 h-4" />
+                    </span>
                   )}
                 </button>
               </div>
