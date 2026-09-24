@@ -47,7 +47,7 @@ interface NotificationItem {
 }
 
 export default function ScheduleSettingsPage() {
-  const { getToken } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const [schedule, setSchedule] = useState<ScheduleSettings | null>(null);
   const [jobs, setJobs] = useState<JobItem[]>([]);
   const [notificationsList, setNotificationsList] = useState<NotificationItem[]>([]);
@@ -64,6 +64,12 @@ export default function ScheduleSettingsPage() {
   const [staleDays, setStaleDays] = useState(7);
 
   const loadData = useCallback(async () => {
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const token = await getToken();
       if (!token) return;
@@ -86,11 +92,13 @@ export default function ScheduleSettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [getToken]);
+  }, [isLoaded, isSignedIn, getToken]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (isLoaded) {
+      loadData();
+    }
+  }, [isLoaded, isSignedIn, loadData]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useUser } from '@clerk/nextjs';
+import { useUser, SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
 import {
   Search,
   Sparkles,
@@ -31,12 +31,23 @@ import {
   Check,
 } from 'lucide-react';
 
+function getUserDisplayName(user: any): string {
+  if (!user) return 'Dashboard';
+  if (user.fullName && user.fullName.trim()) return user.fullName;
+  if (user.firstName && user.firstName.trim()) return user.firstName;
+  if (user.username && user.username.trim()) return user.username;
+  if (user.primaryEmailAddress?.emailAddress) {
+    return user.primaryEmailAddress.emailAddress.split('@')[0];
+  }
+  if (user.emailAddresses && user.emailAddresses[0]?.emailAddress) {
+    return user.emailAddresses[0].emailAddress.split('@')[0];
+  }
+  return 'Dashboard';
+}
+
 export default function HomePage() {
   const router = useRouter();
-  const { user, isSignedIn, isLoaded } = useUser();
-  const displayName = isLoaded && isSignedIn
-    ? (user.fullName || user.firstName || user.username || user.primaryEmailAddress?.emailAddress?.split('@')[0] || 'My Account')
-    : null;
+  const { user, isSignedIn } = useUser();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCompany, setSelectedCompany] = useState('Austin Smile Studio');
@@ -115,20 +126,33 @@ export default function HomePage() {
 
           {/* CTA */}
           <div className="flex items-center gap-3">
-            {displayName ? (
+            <SignedIn>
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/app"
+                  className="relative group overflow-hidden px-4 sm:px-5 py-2 rounded-xl font-semibold text-xs sm:text-sm text-white bg-gradient-to-r from-indigo-600 via-indigo-700 to-cyan-600 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.99] transition-all duration-200 cursor-pointer flex items-center gap-2"
+                >
+                  {user?.imageUrl ? (
+                    <img src={user.imageUrl} alt={getUserDisplayName(user)} className="w-4 h-4 rounded-full object-cover ring-1 ring-white/50" />
+                  ) : (
+                    <User className="w-4 h-4 text-cyan-200" />
+                  )}
+                  <span className="max-w-[130px] truncate">{getUserDisplayName(user)}</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                </Link>
+                <div className="hidden sm:block pl-1">
+                  <UserButton afterSignOutUrl="/" />
+                </div>
+              </div>
+            </SignedIn>
+            <SignedOut>
               <Link
-                href="/app"
-                className="relative group overflow-hidden px-4 sm:px-5 py-2 rounded-xl font-semibold text-xs sm:text-sm text-white bg-gradient-to-r from-indigo-600 via-indigo-700 to-cyan-600 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.99] transition-all duration-200 cursor-pointer flex items-center gap-2"
+                href="/sign-in"
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition"
               >
-                {user?.imageUrl ? (
-                  <img src={user.imageUrl} alt={displayName} className="w-4 h-4 rounded-full object-cover ring-1 ring-white/50" />
-                ) : (
-                  <User className="w-4 h-4 text-cyan-200" />
-                )}
-                <span className="max-w-[130px] truncate">{displayName}</span>
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                <Lock className="w-3.5 h-3.5 text-slate-400" />
+                <span>Sign In</span>
               </Link>
-            ) : (
               <Link
                 href="/sign-up"
                 className="relative group overflow-hidden px-4 sm:px-5 py-2 rounded-xl font-semibold text-xs sm:text-sm text-white bg-gradient-to-r from-indigo-600 via-indigo-700 to-cyan-600 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.99] transition-all duration-200 cursor-pointer flex items-center gap-1.5"
@@ -136,7 +160,7 @@ export default function HomePage() {
                 <span>Start Free Scout</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
               </Link>
-            )}
+            </SignedOut>
           </div>
         </div>
       </header>
@@ -1044,38 +1068,37 @@ export default function HomePage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            {displayName ? (
+            <SignedIn>
               <Link
                 href="/app"
                 className="w-full sm:w-auto px-8 py-4 rounded-xl font-extrabold text-sm sm:text-base text-slate-900 bg-white hover:bg-slate-100 shadow-xl shadow-white/10 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
               >
                 {user?.imageUrl ? (
-                  <img src={user.imageUrl} alt={displayName} className="w-5 h-5 rounded-full object-cover ring-1 ring-slate-300" />
+                  <img src={user.imageUrl} alt={getUserDisplayName(user)} className="w-5 h-5 rounded-full object-cover ring-1 ring-slate-300" />
                 ) : (
                   <User className="w-5 h-5 text-indigo-600" />
                 )}
-                <span>Go to Dashboard ({displayName})</span>
+                <span>Go to Dashboard ({getUserDisplayName(user)})</span>
                 <ArrowRight className="w-4 h-4 text-indigo-600" />
               </Link>
-            ) : (
-              <>
-                <Link
-                  href="/sign-up"
-                  className="w-full sm:w-auto px-8 py-4 rounded-xl font-extrabold text-sm sm:text-base text-slate-900 bg-white hover:bg-slate-100 shadow-xl shadow-white/10 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <span>Scan Your Company (Sign Up)</span>
-                  <ArrowRight className="w-4 h-4 text-indigo-600" />
-                </Link>
+            </SignedIn>
+            <SignedOut>
+              <Link
+                href="/sign-up"
+                className="w-full sm:w-auto px-8 py-4 rounded-xl font-extrabold text-sm sm:text-base text-slate-900 bg-white hover:bg-slate-100 shadow-xl shadow-white/10 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>Scan Your Company (Sign Up)</span>
+                <ArrowRight className="w-4 h-4 text-indigo-600" />
+              </Link>
 
-                <Link
-                  href="/sign-in"
-                  className="w-full sm:w-auto px-8 py-4 rounded-xl font-bold text-sm sm:text-base text-slate-200 bg-slate-800/90 border border-slate-700 hover:bg-slate-800 hover:text-white transition-all cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <Lock className="w-4 h-4 text-cyan-400" />
-                  <span>Sign In to Account</span>
-                </Link>
-              </>
-            )}
+              <Link
+                href="/sign-in"
+                className="w-full sm:w-auto px-8 py-4 rounded-xl font-bold text-sm sm:text-base text-slate-200 bg-slate-800/90 border border-slate-700 hover:bg-slate-800 hover:text-white transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Lock className="w-4 h-4 text-cyan-400" />
+                <span>Sign In to Account</span>
+              </Link>
+            </SignedOut>
           </div>
 
           <p className="text-xs text-slate-400 mt-6">
@@ -1130,24 +1153,23 @@ export default function HomePage() {
             &copy; {new Date().getFullYear()} Serp-Scout Core Engineering. All rights reserved.
           </p>
           <div className="flex items-center gap-4 text-[11px] text-slate-400">
-            {displayName ? (
+            <SignedIn>
               <Link
                 href="/app"
                 className="inline-flex items-center gap-2 text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition bg-slate-900/90 border border-slate-700/80 hover:border-cyan-500/50 px-3.5 py-1.5 rounded-full shadow-sm"
               >
                 {user?.imageUrl ? (
-                  <img src={user.imageUrl} alt={displayName} className="w-4 h-4 rounded-full object-cover ring-1 ring-cyan-400/60" />
+                  <img src={user.imageUrl} alt={getUserDisplayName(user)} className="w-4 h-4 rounded-full object-cover ring-1 ring-cyan-400/60" />
                 ) : (
                   <User className="w-3.5 h-3.5 text-cyan-400" />
                 )}
-                <span>{displayName}</span>
+                <span>{getUserDisplayName(user)}</span>
               </Link>
-            ) : (
-              <>
-                <Link href="/sign-in" className="hover:text-white transition">Sign In</Link>
-                <Link href="/sign-up" className="hover:text-white transition">Sign Up</Link>
-              </>
-            )}
+            </SignedIn>
+            <SignedOut>
+              <Link href="/sign-in" className="hover:text-white transition">Sign In</Link>
+              <Link href="/sign-up" className="hover:text-white transition">Sign Up</Link>
+            </SignedOut>
           </div>
         </div>
       </footer>

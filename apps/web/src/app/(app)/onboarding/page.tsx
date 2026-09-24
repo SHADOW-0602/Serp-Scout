@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { apiClient } from '@/lib/api';
+import AuthLoadingScreen from '@/components/AuthLoadingScreen';
 import {
   MapPin,
   TrendingUp,
@@ -117,9 +118,10 @@ const INDUSTRIES = [
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { getToken } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [checkingExisting, setCheckingExisting] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<'starter' | 'pro' | 'agency'>('pro');
@@ -160,6 +162,67 @@ export default function OnboardingPage() {
   const [isSearchingLocation, setIsSearchingLocation] = useState(false);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const locationDebounceTimer = React.useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-redirect if the user already has at least one monitored business in their workspace
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      setCheckingExisting(false);
+      return;
+    }
+
+    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const isExplicitNew = params?.get('new') === 'true' || params?.get('force') === 'true';
+    if (isExplicitNew) {
+      setCheckingExisting(false);
+      return;
+    }
+
+    // 1. Instant check from local cache
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('serp_scout_cached_businesses');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            router.replace('/app');
+            return;
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 2. Authoritative check from API
+    async function verifyBusinesses() {
+      try {
+        const token = await getToken();
+        if (!token) {
+          setCheckingExisting(false);
+          return;
+        }
+
+        const list = await apiClient<any[]>('/api/businesses', { token });
+        if (list && list.length > 0) {
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('serp_scout_cached_businesses', JSON.stringify(list));
+              if (!localStorage.getItem('serp_scout_active_biz_id')) {
+                localStorage.setItem('serp_scout_active_biz_id', list[0].id);
+              }
+            } catch (e) {}
+          }
+          router.replace('/app');
+          return;
+        }
+      } catch (err) {
+        console.warn('Unable to verify businesses in onboarding:', err);
+      } finally {
+        setCheckingExisting(false);
+      }
+    }
+
+    verifyBusinesses();
+  }, [isLoaded, isSignedIn, getToken, router]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -476,6 +539,12 @@ export default function OnboardingPage() {
       }
 
       // 5. Route to overview dashboard with auto-analysis parameters
+      if (typeof window !== 'undefined' && createdBusinessId) {
+        try {
+          localStorage.setItem('serp_scout_active_biz_id', createdBusinessId);
+        } catch (e) {}
+      }
+
       const navParams = new URLSearchParams();
       navParams.set('auto_analyze', 'true');
       if (createdBusinessId) navParams.set('biz_id', createdBusinessId);
@@ -489,6 +558,19 @@ export default function OnboardingPage() {
       setLoading(false);
     }
   };
+
+  if (checkingExisting) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-full max-w-md">
+          <AuthLoadingScreen
+            message="Checking Workspace Status..."
+            subMessage="Verifying your business profile and preparing competitive intelligence radar..."
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-[calc(100vh-4rem)] py-8 sm:py-12 px-4 overflow-hidden flex flex-col justify-center">

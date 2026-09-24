@@ -85,7 +85,7 @@ export default function HowItWorksPage() {
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
-              href="/sign-up?redirect_url=/onboarding"
+              href="/sign-up?redirect_url=/app"
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-bold text-sm sm:text-base text-white bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-700 hover:to-cyan-700 shadow-xl shadow-indigo-500/25 hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
             >
               <Sparkles className="w-4 h-4 text-cyan-200" />
@@ -291,7 +291,7 @@ export default function HowItWorksPage() {
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
-              href="/sign-up?redirect_url=/onboarding"
+              href="/sign-up?redirect_url=/app"
               className="w-full sm:w-auto px-8 py-4 rounded-xl font-bold text-sm sm:text-base text-slate-900 bg-white hover:bg-slate-100 shadow-xl hover:scale-105 transition flex items-center justify-center gap-2"
             >
               <span>Scan Your Company Now</span>

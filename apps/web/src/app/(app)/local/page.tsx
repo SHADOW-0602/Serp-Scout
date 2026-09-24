@@ -70,7 +70,7 @@ interface ReviewAnalysisData {
 }
 
 export default function LocalSeoPage() {
-  const { getToken } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const [businesses, setBusinesses] = useState<BusinessSummary[]>([]);
   const [selectedBizId, setSelectedBizId] = useState<string>('');
   const [loadingBiz, setLoadingBiz] = useState(true);
@@ -167,19 +167,61 @@ export default function LocalSeoPage() {
     }
   }, [selectedBizId]);
 
+  // Immediate client-side hydration from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('serp_scout_cached_businesses');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setBusinesses(parsed);
+            const cachedBizId = localStorage.getItem('serp_scout_active_biz_id');
+            const target = cachedBizId && parsed.find((b: any) => b.id === cachedBizId)
+              ? parsed.find((b: any) => b.id === cachedBizId)
+              : parsed[0];
+            setSelectedBizId(target.id);
+            setLocation(target.city || '');
+            setQuery(`${target.industry || 'Service'} in ${target.city || 'Local'}`);
+            setLoadingBiz(false);
+          }
+        }
+      } catch (e) {}
+    }
+  }, []);
+
   // Load businesses
   useEffect(() => {
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      setLoadingBiz(false);
+      return;
+    }
+
     async function load() {
       try {
         const token = await getToken();
         if (!token) return;
         const list = await apiClient<BusinessSummary[]>('/api/businesses', { token });
         setBusinesses(list);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('serp_scout_cached_businesses', JSON.stringify(list));
+          } catch (e) {}
+        }
         if (list.length > 0) {
-          const first = list[0];
-          setSelectedBizId(first.id);
-          setLocation(first.city || '');
-          setQuery(`${first.industry || 'Service'} in ${first.city || 'Austin'}`);
+          const cachedBizId = typeof window !== 'undefined' ? localStorage.getItem('serp_scout_active_biz_id') : null;
+          const target = cachedBizId && list.find((b) => b.id === cachedBizId)
+            ? list.find((b) => b.id === cachedBizId)!
+            : list[0];
+          setSelectedBizId(target.id);
+          setLocation(target.city || '');
+          setQuery(`${target.industry || 'Service'} in ${target.city || 'Austin'}`);
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('serp_scout_active_biz_id', target.id);
+            } catch (e) {}
+          }
         }
       } catch (err: any) {
         console.error('Failed to load businesses:', err);
@@ -189,7 +231,7 @@ export default function LocalSeoPage() {
       }
     }
     load();
-  }, [getToken]);
+  }, [isLoaded, isSignedIn, getToken]);
 
   const handleLocationInputChange = (val: string) => {
     setLocation(val);
@@ -425,8 +467,14 @@ export default function LocalSeoPage() {
             <select
               value={selectedBizId}
               onChange={(e) => {
-                const b = businesses.find((biz) => biz.id === e.target.value);
-                setSelectedBizId(e.target.value);
+                const newId = e.target.value;
+                const b = businesses.find((biz) => biz.id === newId);
+                setSelectedBizId(newId);
+                if (typeof window !== 'undefined') {
+                  try {
+                    localStorage.setItem('serp_scout_active_biz_id', newId);
+                  } catch (err) {}
+                }
                 if (b) {
                   setLocation(b.city || '');
                   setQuery(`${b.industry || 'Services'} in ${b.city || 'Austin'}`);
@@ -1235,6 +1283,18 @@ export default function LocalSeoPage() {
                           );
                         })}
                       </div>
+
+                      {signal.id === 'signal_3' && (
+                        <div className="pt-2">
+                          <Link
+                            href="/content?tab=reviews"
+                            className="w-full py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition"
+                          >
+                            <Star className="w-3.5 h-3.5 fill-white text-white" />
+                            <span>Launch VoC Intelligence & Velocity Suite →</span>
+                          </Link>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

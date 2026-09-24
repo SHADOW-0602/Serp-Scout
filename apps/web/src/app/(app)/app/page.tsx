@@ -50,7 +50,7 @@ interface JobStatusResponse {
 }
 
 export default function OverviewDashboardPage() {
-  const { getToken } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const [businesses, setBusinesses] = useState<BusinessSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,24 +60,56 @@ export default function OverviewDashboardPage() {
   const [analysisStatus, setAnalysisStatus] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<WebsiteAnalysis | null>(null);
 
+  // Immediate client-side hydration from localStorage so company displays instantly without blank flash
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('serp_scout_cached_businesses');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setBusinesses(parsed);
+            setLoading(false);
+          }
+        }
+      } catch (e) {}
+    }
+  }, []);
+
   const loadBusinesses = useCallback(async () => {
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const token = await getToken();
       if (!token) return;
 
       const list = await apiClient<BusinessSummary[]>('/api/businesses', { token });
       setBusinesses(list);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('serp_scout_cached_businesses', JSON.stringify(list));
+          if (list.length > 0 && !localStorage.getItem('serp_scout_active_biz_id')) {
+            localStorage.setItem('serp_scout_active_biz_id', list[0].id);
+          }
+        } catch (e) {}
+      }
     } catch (err: any) {
       console.error('Failed to load businesses:', err);
       setError(err.message || 'Failed to load business profiles');
     } finally {
       setLoading(false);
     }
-  }, [getToken]);
+  }, [isLoaded, isSignedIn, getToken]);
 
   useEffect(() => {
-    loadBusinesses();
-  }, [loadBusinesses]);
+    if (isLoaded) {
+      loadBusinesses();
+    }
+  }, [isLoaded, isSignedIn, loadBusinesses]);
 
   const autoTriggeredRef = React.useRef(false);
 

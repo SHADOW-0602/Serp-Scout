@@ -96,7 +96,7 @@ interface ShareData {
 }
 
 export default function ReportsPage() {
-  const { getToken } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const [businesses, setBusinesses] = useState<BusinessSummary[]>([]);
   const [selectedBizId, setSelectedBizId] = useState<string>('');
 
@@ -126,23 +126,60 @@ export default function ReportsPage() {
   const [shareCopied, setShareCopied] = useState(false);
   const [selectedViewMode, setSelectedViewMode] = useState<'executive' | 'specialist'>('executive');
 
+  // Immediate client-side hydration from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('serp_scout_cached_businesses');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setBusinesses(parsed);
+            const cachedBizId = localStorage.getItem('serp_scout_active_biz_id');
+            const targetId = cachedBizId && parsed.some((b: any) => b.id === cachedBizId)
+              ? cachedBizId
+              : parsed[0].id;
+            setSelectedBizId(targetId);
+          }
+        }
+      } catch (e) {}
+    }
+  }, []);
+
   // Load businesses
   useEffect(() => {
+    if (!isLoaded) return;
+    if (!isSignedIn) return;
+
     async function loadBusinesses() {
       try {
         const token = await getToken();
         if (!token) return;
         const list = await apiClient<BusinessSummary[]>('/api/businesses', { token });
         setBusinesses(list);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('serp_scout_cached_businesses', JSON.stringify(list));
+          } catch (e) {}
+        }
         if (list.length > 0) {
-          setSelectedBizId(list[0].id);
+          const cachedBizId = typeof window !== 'undefined' ? localStorage.getItem('serp_scout_active_biz_id') : null;
+          const targetId = cachedBizId && list.some((b) => b.id === cachedBizId)
+            ? cachedBizId
+            : list[0].id;
+          setSelectedBizId(targetId);
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('serp_scout_active_biz_id', targetId);
+            } catch (e) {}
+          }
         }
       } catch (err: any) {
         console.error('Failed to load businesses:', err);
       }
     }
     loadBusinesses();
-  }, [getToken]);
+  }, [isLoaded, isSignedIn, getToken]);
 
   const autoTriggeredReportRef = React.useRef<Set<string>>(new Set());
 
@@ -565,7 +602,15 @@ export default function ReportsPage() {
           {businesses.length > 1 && (
             <select
               value={selectedBizId}
-              onChange={(e) => setSelectedBizId(e.target.value)}
+              onChange={(e) => {
+                const newId = e.target.value;
+                setSelectedBizId(newId);
+                if (typeof window !== 'undefined') {
+                  try {
+                    localStorage.setItem('serp_scout_active_biz_id', newId);
+                  } catch (err) {}
+                }
+              }}
               className="text-xs font-semibold border border-slate-300 rounded-xl px-3 py-2 bg-white text-slate-700 shadow-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               {businesses.map((b) => (

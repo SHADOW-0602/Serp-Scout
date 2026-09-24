@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
-import { db, workspaces, users } from '../db/index.js';
+import { eq, sql, desc } from 'drizzle-orm';
+import { db, workspaces, users, businesses, searchRuns } from '../db/index.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 
 const router = Router();
@@ -97,7 +97,7 @@ router.get('/me', async (req: AuthenticatedRequest, res: Response): Promise<void
   }
 
   try {
-    const userMemberships = await db
+    let userMemberships = await db
       .select({
         role: users.role,
         workspace: workspaces,
@@ -105,6 +105,92 @@ router.get('/me', async (req: AuthenticatedRequest, res: Response): Promise<void
       .from(users)
       .innerJoin(workspaces, eq(users.workspaceId, workspaces.id))
       .where(eq(users.id, userId));
+
+    if (userMemberships.length === 0) {
+      // Auto-heal membership if owned workspace exists or if workspace exists in DB
+      const ownedWs = await db
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.ownerId, userId))
+        .limit(1);
+
+      const targetWs = ownedWs[0] || (await db.select().from(workspaces).orderBy(desc(workspaces.createdAt)).limit(1))[0];
+
+      if (targetWs) {
+        await db
+          .insert(users)
+          .values({
+            id: userId,
+            workspaceId: targetWs.id,
+            name: 'Workspace Owner',
+            email: `${userId}@user.clerk`,
+            role: 'owner',
+          })
+          .onConflictDoUpdate({
+            target: users.id,
+            set: { workspaceId: targetWs.id, role: 'owner' },
+          });
+
+        userMemberships = [
+          {
+            role: 'owner',
+            workspace: targetWs,
+          },
+        ];
+      }
+    }
+
+    const activeWs = userMemberships[0]?.workspace;
+    let serpapiUsed = activeWs?.usedQuota || 0;
+    let tavilyUsed = 0;
+
+    if (activeWs) {
+      try {
+        const providerCounts = await db
+          .select({
+            provider: searchRuns.provider,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(searchRuns)
+          .innerJoin(businesses, eq(searchRuns.businessId, businesses.id))
+          .where(eq(businesses.workspaceId, activeWs.id))
+          .groupBy(searchRuns.provider);
+
+        for (const row of providerCounts) {
+          if (row.provider === 'tavily') {
+            tavilyUsed = Number(row.count) || 0;
+          } else if (row.provider === 'serpapi') {
+            serpapiUsed = Math.max(serpapiUsed, Number(row.count) || 0);
+          }
+        }
+      } catch (e) {
+        console.warn('Could not aggregate provider counts:', e);
+      }
+    }
+
+    const serpapiLimit = activeWs?.monthlyQuota || 500;
+    const tavilyLimit = (activeWs?.monthlyQuota || 500) * 2; // e.g. 1000 sweep units
+
+    const providerQuotas = {
+      serpapi: {
+        provider: 'serpapi',
+        name: 'SerpApi Google Engine',
+        monthlyLimit: serpapiLimit,
+        used: serpapiUsed,
+        remaining: Math.max(0, serpapiLimit - serpapiUsed),
+        percentage: Math.min(100, Math.round((serpapiUsed / serpapiLimit) * 100)),
+        description: 'Google Organic, Google Maps (Local 3-Pack), & Reviews',
+      },
+      tavily: {
+        provider: 'tavily',
+        name: 'Tavily AI Search Engine',
+        monthlyLimit: tavilyLimit,
+        used: tavilyUsed,
+        remaining: Math.max(0, tavilyLimit - tavilyUsed),
+        percentage: Math.min(100, Math.round((tavilyUsed / tavilyLimit) * 100)),
+        description: 'AI Web Sweeps, Competitor Messaging, & News Signals',
+      },
+    };
 
     res.json({
       success: true,
@@ -114,7 +200,11 @@ router.get('/me', async (req: AuthenticatedRequest, res: Response): Promise<void
           role: m.role,
         })),
         activeWorkspace: userMemberships[0]
-          ? { ...userMemberships[0].workspace, role: userMemberships[0].role }
+          ? {
+              ...userMemberships[0].workspace,
+              role: userMemberships[0].role,
+              providerQuotas,
+            }
           : null,
       },
     });

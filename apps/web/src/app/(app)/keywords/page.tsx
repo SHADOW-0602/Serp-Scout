@@ -18,6 +18,8 @@ interface BusinessSummary {
   id: string;
   name: string;
   city?: string;
+  industry?: string;
+  websiteUrl?: string;
 }
 
 interface KeywordRankingDetail {
@@ -64,7 +66,7 @@ interface SearchRunRecord {
 }
 
 export default function KeywordsPage() {
-  const { getToken } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const [businesses, setBusinesses] = useState<BusinessSummary[]>([]);
   const [selectedBizId, setSelectedBizId] = useState<string>('');
   const [keywords, setKeywords] = useState<KeywordRankingDetail[]>([]);
@@ -93,6 +95,28 @@ export default function KeywordsPage() {
 
   const autoTriggeredKeywordsRef = React.useRef<Set<string>>(new Set());
 
+  // Immediate client-side hydration from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('serp_scout_cached_businesses');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setBusinesses(parsed);
+            const cachedBizId = localStorage.getItem('serp_scout_active_biz_id');
+            const target = cachedBizId && parsed.find((b: any) => b.id === cachedBizId)
+              ? parsed.find((b: any) => b.id === cachedBizId)
+              : parsed[0];
+            setSelectedBizId(target.id);
+            setNewLocation(target.city || '');
+            setRadarQuery(target.city ? `${target.industry || 'service'} in ${target.city}` : 'local search');
+          }
+        }
+      } catch (e) {}
+    }
+  }, []);
+
   // Instant cache retrieval on business change
   useEffect(() => {
     if (!selectedBizId || typeof window === 'undefined') return;
@@ -111,23 +135,40 @@ export default function KeywordsPage() {
 
   // Load Businesses on Mount
   useEffect(() => {
+    if (!isLoaded) return;
+    if (!isSignedIn) return;
+
     async function loadBusinesses() {
       try {
         const token = await getToken();
         if (!token) return;
         const bizList = await apiClient<BusinessSummary[]>('/api/businesses', { token });
         setBusinesses(bizList);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('serp_scout_cached_businesses', JSON.stringify(bizList));
+          } catch (e) {}
+        }
         if (bizList.length > 0) {
-          setSelectedBizId(bizList[0].id);
-          setNewLocation(bizList[0].city || '');
-          setRadarQuery(bizList[0].city ? `dentist in ${bizList[0].city}` : 'dentist near me');
+          const cachedBizId = typeof window !== 'undefined' ? localStorage.getItem('serp_scout_active_biz_id') : null;
+          const target = cachedBizId && bizList.find((b) => b.id === cachedBizId)
+            ? bizList.find((b) => b.id === cachedBizId)!
+            : bizList[0];
+          setSelectedBizId(target.id);
+          setNewLocation(target.city || '');
+          setRadarQuery(target.city ? `${target.industry || 'service'} in ${target.city}` : 'local search');
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('serp_scout_active_biz_id', target.id);
+            } catch (e) {}
+          }
         }
       } catch (err: any) {
         console.error('Failed to load businesses:', err);
       }
     }
     loadBusinesses();
-  }, [getToken]);
+  }, [isLoaded, isSignedIn, getToken]);
 
   // Run AI Keyword Discovery
   const handleDiscoverKeywords = useCallback(async (targetBizId?: string) => {
@@ -386,7 +427,15 @@ export default function KeywordsPage() {
           {businesses.length > 1 && (
             <select
               value={selectedBizId}
-              onChange={(e) => setSelectedBizId(e.target.value)}
+              onChange={(e) => {
+                const newId = e.target.value;
+                setSelectedBizId(newId);
+                if (typeof window !== 'undefined') {
+                  try {
+                    localStorage.setItem('serp_scout_active_biz_id', newId);
+                  } catch (err) {}
+                }
+              }}
               className="text-xs font-semibold border border-slate-300 rounded-xl px-3 py-2 bg-white text-slate-700 shadow-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               {businesses.map((b) => (

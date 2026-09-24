@@ -2,15 +2,27 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useUser } from '@clerk/nextjs';
-import { ArrowRight, Menu, X, Lock, User } from 'lucide-react';
+import { useUser, SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
+import { ArrowRight, Menu, X, Lock, User as UserIcon } from 'lucide-react';
+
+function getUserDisplayName(user: any): string {
+  if (!user) return 'Dashboard';
+  if (user.fullName && user.fullName.trim()) return user.fullName;
+  if (user.firstName && user.firstName.trim()) return user.firstName;
+  if (user.username && user.username.trim()) return user.username;
+  if (user.primaryEmailAddress?.emailAddress) {
+    return user.primaryEmailAddress.emailAddress.split('@')[0];
+  }
+  if (user.emailAddresses && user.emailAddresses[0]?.emailAddress) {
+    return user.emailAddresses[0].emailAddress.split('@')[0];
+  }
+  return 'Dashboard';
+}
 
 export default function PublicNavbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { user, isSignedIn, isLoaded } = useUser();
-  const displayName = isLoaded && isSignedIn
-    ? (user.fullName || user.firstName || user.username || user.primaryEmailAddress?.emailAddress?.split('@')[0] || 'My Account')
-    : null;
+  const { user } = useUser();
+  const displayName = getUserDisplayName(user);
 
   return (
     <header className="sticky top-0 z-50 backdrop-blur-md bg-white/85 border-b border-slate-200/80 shadow-xs transition-all duration-200">
@@ -63,38 +75,42 @@ export default function PublicNavbar() {
 
         {/* Right CTA Area */}
         <div className="flex items-center gap-2.5 sm:gap-3">
-          {displayName ? (
-            <Link
-              href="/app"
-              className="relative group overflow-hidden px-4 sm:px-5 py-2 rounded-xl font-semibold text-xs sm:text-sm text-white bg-gradient-to-r from-indigo-600 via-indigo-700 to-cyan-600 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.99] transition-all duration-200 cursor-pointer flex items-center gap-2"
-            >
-              {user?.imageUrl ? (
-                <img src={user.imageUrl} alt={displayName} className="w-4 h-4 rounded-full object-cover ring-1 ring-white/50" />
-              ) : (
-                <User className="w-4 h-4 text-cyan-200" />
-              )}
-              <span className="max-w-[130px] truncate">{displayName}</span>
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-            </Link>
-          ) : (
-            <>
+          <SignedIn>
+            <div className="flex items-center gap-2">
               <Link
-                href="/sign-in"
-                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition"
+                href="/app"
+                className="relative group overflow-hidden px-4 sm:px-5 py-2 rounded-xl font-semibold text-xs sm:text-sm text-white bg-gradient-to-r from-indigo-600 via-indigo-700 to-cyan-600 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.99] transition-all duration-200 cursor-pointer flex items-center gap-2"
               >
-                <Lock className="w-3.5 h-3.5 text-slate-400" />
-                <span>Sign In</span>
-              </Link>
-
-              <Link
-                href="/sign-up"
-                className="relative group overflow-hidden px-4 sm:px-5 py-2 rounded-xl font-semibold text-xs sm:text-sm text-white bg-gradient-to-r from-indigo-600 via-indigo-700 to-cyan-600 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.99] transition-all duration-200 cursor-pointer flex items-center gap-1.5"
-              >
-                <span>Start Free Scout</span>
+                {user?.imageUrl ? (
+                  <img src={user.imageUrl} alt={displayName} className="w-4 h-4 rounded-full object-cover ring-1 ring-white/50" />
+                ) : (
+                  <UserIcon className="w-4 h-4 text-cyan-200" />
+                )}
+                <span className="max-w-[130px] truncate">{displayName}</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
               </Link>
-            </>
-          )}
+              <div className="hidden sm:block pl-1">
+                <UserButton afterSignOutUrl="/" />
+              </div>
+            </div>
+          </SignedIn>
+          <SignedOut>
+            <Link
+              href="/sign-in"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition"
+            >
+              <Lock className="w-3.5 h-3.5 text-slate-400" />
+              <span>Sign In</span>
+            </Link>
+
+            <Link
+              href="/sign-up"
+              className="relative group overflow-hidden px-4 sm:px-5 py-2 rounded-xl font-semibold text-xs sm:text-sm text-white bg-gradient-to-r from-indigo-600 via-indigo-700 to-cyan-600 shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.99] transition-all duration-200 cursor-pointer flex items-center gap-1.5"
+            >
+              <span>Start Free Scout</span>
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+            </Link>
+          </SignedOut>
 
           {/* Mobile Menu Toggle */}
           <button
@@ -116,9 +132,6 @@ export default function PublicNavbar() {
             { label: 'Keyword Opportunity Radar', href: '/features/keywords' },
             { label: 'Content Gap Engine', href: '/features/content-gaps' },
             { label: 'Evidence-Backed Actions', href: '/features/action-plans' },
-            ...(displayName
-              ? [{ label: `Dashboard (${displayName})`, href: '/app' }]
-              : [{ label: 'Sign In', href: '/sign-in' }, { label: 'Start Free Scout', href: '/sign-up' }]),
           ].map((item) => (
             <Link
               key={item.label}
@@ -129,6 +142,31 @@ export default function PublicNavbar() {
               {item.label}
             </Link>
           ))}
+          <SignedIn>
+            <Link
+              href="/app"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-lg text-sm font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition"
+            >
+              Go to Dashboard ({displayName})
+            </Link>
+          </SignedIn>
+          <SignedOut>
+            <Link
+              href="/sign-in"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+            >
+              Sign In
+            </Link>
+            <Link
+              href="/sign-up"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition"
+            >
+              Start Free Scout
+            </Link>
+          </SignedOut>
         </div>
       )}
     </header>

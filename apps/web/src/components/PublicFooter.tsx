@@ -2,14 +2,25 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { useUser } from '@clerk/nextjs';
+import { useUser, SignedIn, SignedOut } from '@clerk/nextjs';
 import { User } from 'lucide-react';
 
+function getUserDisplayName(user: any): string {
+  if (!user) return 'Dashboard';
+  if (user.fullName && user.fullName.trim()) return user.fullName;
+  if (user.firstName && user.firstName.trim()) return user.firstName;
+  if (user.username && user.username.trim()) return user.username;
+  if (user.primaryEmailAddress?.emailAddress) {
+    return user.primaryEmailAddress.emailAddress.split('@')[0];
+  }
+  if (user.emailAddresses && user.emailAddresses[0]?.emailAddress) {
+    return user.emailAddresses[0].emailAddress.split('@')[0];
+  }
+  return 'Dashboard';
+}
+
 export default function PublicFooter() {
-  const { user, isSignedIn, isLoaded } = useUser();
-  const displayName = isLoaded && isSignedIn
-    ? (user.fullName || user.firstName || user.username || user.primaryEmailAddress?.emailAddress?.split('@')[0] || 'My Account')
-    : null;
+  const { user } = useUser();
   return (
     <footer className="bg-slate-950 text-slate-400 py-12 border-t border-slate-800 text-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-2 md:grid-cols-4 gap-8 mb-10">
@@ -85,26 +96,25 @@ export default function PublicFooter() {
         <p className="text-[11px] text-slate-500">
           &copy; {new Date().getFullYear()} Serp-Scout Core Engineering. All rights reserved.
         </p>
-        <div className="flex items-center gap-4 text-[11px] text-slate-400">
-          {displayName ? (
-            <Link
-              href="/app"
-              className="inline-flex items-center gap-2 text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition bg-slate-900/90 border border-slate-700/80 hover:border-cyan-500/50 px-3.5 py-1.5 rounded-full shadow-sm"
-            >
-              {user?.imageUrl ? (
-                <img src={user.imageUrl} alt={displayName} className="w-4 h-4 rounded-full object-cover ring-1 ring-cyan-400/60" />
-              ) : (
-                <User className="w-3.5 h-3.5 text-cyan-400" />
-              )}
-              <span>{displayName}</span>
-            </Link>
-          ) : (
-            <>
+          <div className="flex items-center gap-4 text-[11px] text-slate-400">
+            <SignedIn>
+              <Link
+                href="/app"
+                className="inline-flex items-center gap-2 text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition bg-slate-900/90 border border-slate-700/80 hover:border-cyan-500/50 px-3.5 py-1.5 rounded-full shadow-sm"
+              >
+                {user?.imageUrl ? (
+                  <img src={user.imageUrl} alt={getUserDisplayName(user)} className="w-4 h-4 rounded-full object-cover ring-1 ring-cyan-400/60" />
+                ) : (
+                  <User className="w-3.5 h-3.5 text-cyan-400" />
+                )}
+                <span>{getUserDisplayName(user)}</span>
+              </Link>
+            </SignedIn>
+            <SignedOut>
               <Link href="/sign-in" className="hover:text-white transition">Sign In</Link>
               <Link href="/sign-up" className="hover:text-white transition">Sign Up</Link>
-            </>
-          )}
-        </div>
+            </SignedOut>
+          </div>
       </div>
     </footer>
   );

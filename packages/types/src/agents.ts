@@ -130,6 +130,55 @@ export interface ReviewTheme {
   suggestedCopyOpportunity?: string;
 }
 
+export interface CompetitorVulnerability {
+  competitorName: string;
+  weaknessTheme: string;
+  complaintSample: string;
+  counterPositioningHeadline: string;
+  trustBadgeCopy: string;
+  exploitStrategy: string;
+}
+
+export interface ReviewVelocityBenchmark {
+  currentReviews: number;
+  currentRating: number;
+  leaderName: string;
+  leaderReviews: number;
+  leaderRating: number;
+  gapReviews: number;
+  weeklyPaceNeeded30Days: number;
+  weeklyPaceNeeded60Days: number;
+  weeklyPaceNeeded90Days: number;
+  leaderStagnant: boolean;
+  leaderDaysSinceLastReview?: number;
+  strategicAdvice: string;
+}
+
+export interface ReviewRequestTemplate {
+  channel: 'sms' | 'email' | 'in_person';
+  title: string;
+  previewText: string;
+  body: string;
+  timing: string;
+}
+
+export interface AIReviewDeescalation {
+  customerReviewSnippet: string;
+  starRating: number;
+  detectedIssue: string;
+  suggestedPublicResponse: string;
+  seoAnchorKeywordsIncluded: string[];
+  internalStaffAction: string;
+}
+
+export interface ReviewReplyResult {
+  suggestedReply: string;
+  sentiment: 'negative' | 'neutral' | 'positive';
+  seoKeywordsIncluded: string[];
+  internalStaffAction: string;
+  disclaimer: string;
+}
+
 export interface NewsSignal {
   headline: string;
   source: string;
