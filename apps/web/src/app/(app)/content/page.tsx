@@ -79,14 +79,30 @@ interface MessagingData {
     primaryOffer: string;
     differentiator: string;
     priceLanguage: string | null;
+    guarantees?: string | null;
+    speedOfService?: string | null;
     cta: string;
     trustSignals: string[];
+    sourceEvidence?: string;
+    sourceUrl?: string;
+    isLiveGrounded?: boolean;
+    features?: {
+      hasOnlineBooking: boolean;
+      hasEmergencyService: boolean;
+      hasTransparentPricing: boolean;
+      hasSatisfactionGuarantee: boolean;
+    };
   }>;
   marketPatterns: Array<{
     pattern: string;
     observedFacts: string[];
     aiInterpretation: string;
     recommendedAction: string;
+  }>;
+  deployableHeadlines?: Array<{
+    hook: string;
+    rationale: string;
+    targetLocationOrService?: string;
   }>;
   overallTakeaway: string;
 }
@@ -165,8 +181,7 @@ export default function ContentAndAnalysisPage() {
   const [changeData, setChangeData] = useState<ChangeDetectionData | null>(null);
   const autoTriggeredGapsRef = React.useRef<Set<string>>(new Set());
 
-  // Tab 3: VoC Sub-Navigation & Interactivity State
-  const [reviewSubView, setReviewSubView] = useState<'vulnerabilities' | 'velocity' | 'templates' | 'shield' | 'themes'>('vulnerabilities');
+  // Tab 3: VoC Interactivity State
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [showQrModal, setShowQrModal] = useState(false);
   const [customTargetReviews, setCustomTargetReviews] = useState<number | null>(null);
@@ -801,90 +816,161 @@ export default function ContentAndAnalysisPage() {
       {activeTab === 'messaging' && (
         <div className="space-y-6">
           {analyzingMessaging ? (
-            <div className="p-12 text-center text-sm text-slate-400">Analyzing competitor positioning...</div>
+            <div className="p-16 text-center bg-white rounded-2xl border border-slate-200 shadow-xs">
+              <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mx-auto mb-3" />
+              <h3 className="text-sm font-bold text-slate-900">Scraping & Analyzing Competitor Positioning...</h3>
+              <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                Extracting live homepage titles, lead offers, CTAs, and verified hooks across your direct search competitors.
+              </p>
+            </div>
           ) : messagingData ? (
             <>
-              {/* Overall Takeaway */}
-              <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-4">
-                <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider">Strategic Market Summary</h3>
-                <p className="text-xs text-indigo-900 mt-1 leading-relaxed">{messagingData.overallTakeaway}</p>
-              </div>
+              {/* Header Action Bar */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">
+                      Brand Positioning Radar
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      {businesses.find((b) => b.id === selectedBizId)?.name || 'Selected Business'}
+                    </span>
+                  </div>
+                  <h2 className="text-base font-bold text-slate-900 mt-1 flex items-center gap-2">
+                    Competitor Messaging & Positioning Patterns
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Live verified headlines, lead offers, guarantees, and conversion hooks ground-truthed against real local competitors.
+                  </p>
+                </div>
 
-              {/* Market Patterns (Facts vs AI Interpretation vs Action) */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-bold text-slate-900">Observed Market Patterns</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {messagingData.marketPatterns.map((p, idx) => (
-                    <div key={idx} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-2.5">
-                      <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center justify-center">
-                          {idx + 1}
-                        </span>
-                        <h4 className="font-bold text-xs text-slate-900">{p.pattern}</h4>
-                      </div>
-
-                      <div className="text-xs space-y-1.5">
-                        <div className="p-2 bg-slate-50 rounded border border-slate-100">
-                          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Observed Evidence:</span>
-                          <p className="text-slate-700 italic text-[11px] mt-0.5">"{p.observedFacts.join('", "')}"</p>
-                        </div>
-
-                        <div>
-                          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Market Meaning:</span>
-                          <p className="text-slate-600 text-[11px] mt-0.5">{p.aiInterpretation}</p>
-                        </div>
-
-                        <div className="p-2 bg-indigo-50/60 rounded border border-indigo-100">
-                          <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">Recommended Counter-Action:</span>
-                          <p className="text-indigo-950 font-medium text-[11px] mt-0.5">{p.recommendedAction}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={handleRunMessaging}
+                    disabled={analyzingMessaging}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${analyzingMessaging ? 'animate-spin' : ''}`} />
+                    <span>Re-Scan Live Messaging</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Competitor Profiles Table */}
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                <div className="p-3 bg-slate-50 border-b border-slate-200">
-                  <h3 className="text-xs font-bold text-slate-800">Competitor Positioning Matrix</h3>
+              {/* Strategic Market Summary */}
+              <div className="bg-gradient-to-r from-indigo-900 to-slate-900 text-white rounded-2xl p-6 shadow-sm space-y-2">
+                <div className="flex items-center gap-2 text-indigo-300">
+                  <Megaphone className="w-4 h-4" />
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider">
+                    Executive Market Takeaway
+                  </span>
                 </div>
+                <p className="text-xs sm:text-sm text-indigo-50 leading-relaxed font-medium">
+                  {messagingData.overallTakeaway}
+                </p>
+              </div>
+
+              {/* ── 1. MARKET FEATURE & CONVERSION HOOK MATRIX ── */}
+              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs space-y-0">
+                <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-amber-500" />
+                      <span>Market Feature & Conversion Hook Matrix</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Direct audit of which core booking capabilities your competitors actively promote on the web.
+                    </p>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 self-start sm:self-auto">
+                    {messagingData.competitors.length} Rivals Audited
+                  </span>
+                </div>
+
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="border-b border-slate-100 text-slate-400">
-                        <th className="py-2.5 px-4 font-semibold">Competitor</th>
-                        <th className="py-2.5 px-3 font-semibold">Primary Headline / Offer</th>
-                        <th className="py-2.5 px-3 font-semibold">Differentiator</th>
-                        <th className="py-2.5 px-3 font-semibold">Call to Action</th>
-                        <th className="py-2.5 px-4 font-semibold">Trust Signals</th>
+                      <tr className="border-b border-slate-100 bg-slate-50/70 text-slate-500 text-[11px]">
+                        <th className="py-3 px-4 font-bold">Competitor</th>
+                        <th className="py-3 px-3 font-bold text-center">📱 Online Booking</th>
+                        <th className="py-3 px-3 font-bold text-center">⚡ Same-Day / Emergency</th>
+                        <th className="py-3 px-3 font-bold text-center">💳 Clear Pricing / Deals</th>
+                        <th className="py-3 px-3 font-bold text-center">🛡️ Guarantees</th>
+                        <th className="py-3 px-4 font-bold">Primary Lead Hook</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {messagingData.competitors.map((c, i) => (
-                        <tr key={i} className="hover:bg-slate-50">
-                          <td className="py-3 px-4">
-                            <div className="font-semibold text-slate-900">{c.competitorName}</div>
-                            <div className="text-[10px] text-slate-400 font-mono">{c.domain}</div>
-                          </td>
-                          <td className="py-3 px-3">
-                            <div className="font-medium text-slate-800">{c.primaryOffer || c.headline}</div>
-                            {c.priceLanguage && <span className="text-[10px] text-emerald-700 font-semibold">{c.priceLanguage}</span>}
-                          </td>
-                          <td className="py-3 px-3 text-slate-600">{c.differentiator}</td>
-                          <td className="py-3 px-3">
-                            <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-medium">
-                              {c.cta}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="flex flex-wrap gap-1">
-                              {c.trustSignals.map((t, idx) => (
-                                <span key={idx} className="text-[10px] text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
-                                  {t}
-                                </span>
-                              ))}
+                        <tr key={i} className="hover:bg-slate-50/80 transition">
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-slate-900">{c.competitorName}</span>
+                              {c.sourceUrl && (
+                                <a
+                                  href={c.sourceUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-slate-400 hover:text-indigo-600 transition"
+                                  title="View Competitor Website"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              )}
                             </div>
+                            <span className="text-[10px] text-slate-400 font-mono block">{c.domain}</span>
+                          </td>
+                          <td className="py-3.5 px-3 text-center">
+                            {c.features?.hasOnlineBooking ? (
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-50 text-slate-300">
+                                <X className="w-3.5 h-3.5" />
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-3 text-center">
+                            {c.features?.hasEmergencyService || c.speedOfService?.toLowerCase().includes('same day') || c.speedOfService?.toLowerCase().includes('emergency') ? (
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-50 text-slate-300">
+                                <X className="w-3.5 h-3.5" />
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-3 text-center">
+                            {c.features?.hasTransparentPricing || Boolean(c.priceLanguage) ? (
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-50 text-slate-300">
+                                <X className="w-3.5 h-3.5" />
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-3 text-center">
+                            {c.features?.hasSatisfactionGuarantee || Boolean(c.guarantees) ? (
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-50 text-slate-300">
+                                <X className="w-3.5 h-3.5" />
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="font-semibold text-slate-800 text-xs block">
+                              {c.primaryOffer || c.headline}
+                            </span>
+                            {c.priceLanguage && (
+                              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-100 inline-block mt-0.5">
+                                {c.priceLanguage}
+                              </span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -892,14 +978,223 @@ export default function ContentAndAnalysisPage() {
                   </table>
                 </div>
               </div>
+
+              {/* ── 2. OBSERVED MARKET PATTERNS (Evidence vs Action) ── */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Target className="w-4 h-4 text-indigo-600" />
+                  <span>Observed Competitor Market Patterns</span>
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {messagingData.marketPatterns.map((p, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3 flex flex-col justify-between"
+                    >
+                      <div className="space-y-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 font-extrabold text-[11px] flex items-center justify-center shrink-0">
+                            {idx + 1}
+                          </span>
+                          <h4 className="font-bold text-xs text-slate-900 leading-snug">{p.pattern}</h4>
+                        </div>
+
+                        <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100 space-y-1">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Direct Grounded Evidence:
+                          </span>
+                          <p className="text-slate-700 italic text-[11px] leading-relaxed">
+                            &quot;{p.observedFacts.join('&quot; &bull; &quot;')}&quot;
+                          </p>
+                        </div>
+
+                        <div className="text-xs text-slate-600">
+                          <strong className="text-slate-800 block text-[11px] mb-0.5">Market Meaning:</strong>
+                          <p className="text-[11px] leading-relaxed">{p.aiInterpretation}</p>
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 text-xs">
+                        <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block mb-0.5">
+                          Recommended Action for Your Site:
+                        </span>
+                        <p className="text-indigo-950 font-medium text-[11px] leading-relaxed">
+                          {p.recommendedAction}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── 3. DETAILED COMPETITOR POSITIONING MATRIX ── */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Swords className="w-4 h-4 text-indigo-600" />
+                  <span>Competitor Landing Copy & Verified Evidence</span>
+                </h3>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {messagingData.competitors.map((c, i) => (
+                    <div
+                      key={i}
+                      className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3.5 flex flex-col justify-between"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="font-bold text-sm text-slate-900">{c.competitorName}</h4>
+                              {c.sourceUrl && (
+                                <a
+                                  href={c.sourceUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-slate-400 hover:text-indigo-600 transition"
+                                  title="Open Competitor URL"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-mono">{c.domain}</span>
+                          </div>
+
+                          <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded border shrink-0 ${
+                            c.isLiveGrounded !== false
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                          }`}>
+                            {c.isLiveGrounded !== false ? '✓ Live Scraped Fact' : 'SERP Evidence'}
+                          </span>
+                        </div>
+
+                        {/* Primary Headline & Lead Offer */}
+                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                            Primary Hook / Headline:
+                          </span>
+                          <p className="text-xs font-bold text-slate-900">
+                            &quot;{c.headline || c.primaryOffer}&quot;
+                          </p>
+                          {c.primaryOffer && c.primaryOffer !== c.headline && (
+                            <p className="text-[11px] text-indigo-700 font-medium pt-0.5">
+                              Offer: {c.primaryOffer}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Source Evidence Quote */}
+                        {c.sourceEvidence && (
+                          <div className="p-2.5 rounded-lg bg-amber-50/50 border border-amber-100 text-[11px]">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 block">
+                              Observed Snippet / Proof:
+                            </span>
+                            <p className="text-slate-700 italic mt-0.5">
+                              &quot;{c.sourceEvidence}&quot;
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Differentiator & CTA */}
+                        <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-semibold block">Differentiator:</span>
+                            <p className="text-slate-700 text-[11px] font-medium mt-0.5">{c.differentiator}</p>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-semibold block">Primary CTA:</span>
+                            <span className="inline-block mt-0.5 px-2 py-0.5 bg-slate-100 text-slate-800 rounded font-semibold text-[10px]">
+                              {c.cta}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Trust Signals */}
+                        {c.trustSignals && c.trustSignals.length > 0 && (
+                          <div className="pt-1">
+                            <span className="text-[10px] text-slate-400 font-semibold block mb-1">
+                              Trust Signals:
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {c.trustSignals.map((t, idx) => (
+                                <span
+                                  key={idx}
+                                  className="text-[10px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md font-medium"
+                                >
+                                  {t}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── 4. DEPLOYABLE HIGH-CONVERTING HEADLINES (COPY-TO-CLIPBOARD) ── */}
+              {messagingData.deployableHeadlines && messagingData.deployableHeadlines.length > 0 && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-indigo-600" />
+                      <span>Ready-to-Deploy Counter-Positioning Headlines</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      High-converting hero headlines crafted from competitor positioning voids. Copy directly into your website hero or Google Ad extensions.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {messagingData.deployableHeadlines.map((head, idx) => (
+                      <div
+                        key={idx}
+                        className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-indigo-300 transition space-y-2 flex flex-col justify-between"
+                      >
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                              {head.targetLocationOrService || 'Hero / Homepage'}
+                            </span>
+                            <button
+                              onClick={() => handleCopy(`dep_head_${idx}`, head.hook)}
+                              className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-indigo-600 bg-white hover:bg-indigo-50 rounded-lg border border-slate-200 transition flex items-center gap-1"
+                            >
+                              <Copy className="w-3 h-3" />
+                              <span>{copiedKey === `dep_head_${idx}` ? 'Copied!' : 'Copy'}</span>
+                            </button>
+                          </div>
+
+                          <h4 className="text-xs font-bold text-slate-900 leading-snug">
+                            &quot;{head.hook}&quot;
+                          </h4>
+
+                          <p className="text-[11px] text-slate-500 leading-relaxed">
+                            {head.rationale}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           ) : (
-            <div className="text-center py-12">
+            <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 shadow-xs">
+              <Megaphone className="w-10 h-10 text-indigo-600 mx-auto mb-3" />
+              <h3 className="text-sm font-bold text-slate-900">Competitor Positioning & Conversion Hooks</h3>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 mb-6">
+                Scan your confirmed search competitors to extract real landing page hooks, lead offers, and conversion feature matrices.
+              </p>
               <button
                 onClick={handleRunMessaging}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 shadow-sm"
+                className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-semibold hover:bg-indigo-700 shadow-sm transition inline-flex items-center gap-2"
               >
-                Scan Competitor Messaging
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Scan Live Competitor Messaging</span>
               </button>
             </div>
           )}
@@ -957,85 +1252,17 @@ export default function ContentAndAnalysisPage() {
                 </div>
               </div>
 
-              {/* Sub-Navigation Tabs */}
-              <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-xl border border-slate-200 overflow-x-auto text-xs font-semibold">
-                <button
-                  onClick={() => setReviewSubView('vulnerabilities')}
-                  className={`px-3.5 py-2 rounded-lg transition flex items-center gap-2 whitespace-nowrap ${
-                    reviewSubView === 'vulnerabilities'
-                      ? 'bg-white text-indigo-600 shadow-xs font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Swords className="w-3.5 h-3.5" />
-                  <span>1. Competitor Vulnerabilities</span>
-                  {reviewData.competitorVulnerabilities && reviewData.competitorVulnerabilities.length > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-indigo-50 text-indigo-700 font-extrabold">
-                      {reviewData.competitorVulnerabilities.length}
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  onClick={() => setReviewSubView('velocity')}
-                  className={`px-3.5 py-2 rounded-lg transition flex items-center gap-2 whitespace-nowrap ${
-                    reviewSubView === 'velocity'
-                      ? 'bg-white text-indigo-600 shadow-xs font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Target className="w-3.5 h-3.5" />
-                  <span>2. 3-Pack Velocity Benchmark</span>
-                </button>
-
-                <button
-                  onClick={() => setReviewSubView('templates')}
-                  className={`px-3.5 py-2 rounded-lg transition flex items-center gap-2 whitespace-nowrap ${
-                    reviewSubView === 'templates'
-                      ? 'bg-white text-indigo-600 shadow-xs font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>3. Review Request Funnel</span>
-                </button>
-
-                <button
-                  onClick={() => setReviewSubView('shield')}
-                  className={`px-3.5 py-2 rounded-lg transition flex items-center gap-2 whitespace-nowrap ${
-                    reviewSubView === 'shield'
-                      ? 'bg-white text-indigo-600 shadow-xs font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <ShieldAlert className="w-3.5 h-3.5" />
-                  <span>4. AI Reputation Shield</span>
-                </button>
-
-                <button
-                  onClick={() => setReviewSubView('themes')}
-                  className={`px-3.5 py-2 rounded-lg transition flex items-center gap-2 whitespace-nowrap ${
-                    reviewSubView === 'themes'
-                      ? 'bg-white text-indigo-600 shadow-xs font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Smile className="w-3.5 h-3.5" />
-                  <span>5. VoC Themes & Copy</span>
-                </button>
-              </div>
-
               {/* PILLAR 1: Competitor Vulnerabilities & Counter-Positioning */}
-              {reviewSubView === 'vulnerabilities' && (
-                <div className="space-y-4 animate-in fade-in duration-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                        <span>Competitor Weakness & Sentiment Void Matrix</span>
-                        <span className="text-[11px] font-normal text-slate-400">
-                          (Direct Counter-Positioning Assets)
-                        </span>
-                      </h3>
+              <div id="voc-vulnerabilities" className="space-y-4 pt-1 scroll-mt-16">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Swords className="w-4 h-4 text-indigo-600" />
+                      <span>1. Competitor Weakness & Sentiment Void Matrix</span>
+                      <span className="text-[11px] font-normal text-slate-400">
+                        (Direct Counter-Positioning Assets)
+                      </span>
+                    </h3>
                       <p className="text-xs text-slate-500 mt-0.5">
                         These are recurring 1★–3★ complaints at rival businesses. Use our counter-positioning headlines and trust badges to win defecting customers.
                       </p>
@@ -1119,12 +1346,22 @@ export default function ContentAndAnalysisPage() {
                     ))}
                   </div>
                 </div>
-              )}
 
               {/* PILLAR 2: Google 3-Pack Review Velocity & Calculator */}
-              {reviewSubView === 'velocity' && (
-                <div className="space-y-5 animate-in fade-in duration-200">
-                  {/* Benchmarking Summary */}
+              <div id="voc-velocity" className="space-y-5 pt-8 border-t border-slate-200 scroll-mt-16">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Target className="w-4 h-4 text-indigo-600" />
+                      <span>2. Google 3-Pack Review Velocity Benchmark & Pace Calculator</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Audited review count and velocity compared against local search leaders to calculate catch-up milestones.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Benchmarking Summary */}
                   {reviewData.velocityBenchmark && (
                     <>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1319,20 +1556,19 @@ export default function ContentAndAnalysisPage() {
                     </>
                   )}
                 </div>
-              )}
 
               {/* PILLAR 3: Review Request Funnel & QR Toolkit */}
-              {reviewSubView === 'templates' && (
-                <div className="space-y-5 animate-in fade-in duration-200">
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                      <span>Multi-Channel Review Generation Funnel</span>
-                      <span className="text-[11px] font-normal text-slate-400">(Ready-to-Deploy Copy)</span>
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Personalized outreach copy engineered with natural customer vocabulary to maximize Google review conversion.
-                    </p>
-                  </div>
+              <div id="voc-funnel" className="space-y-5 pt-8 border-t border-slate-200 scroll-mt-16">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Send className="w-4 h-4 text-indigo-600" />
+                    <span>3. Multi-Channel Review Generation Funnel</span>
+                    <span className="text-[11px] font-normal text-slate-400">(Ready-to-Deploy Copy)</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Personalized outreach copy engineered with natural customer vocabulary to maximize Google review conversion.
+                  </p>
+                </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     {(reviewData.requestTemplates || []).map((tmpl, idx) => (
@@ -1397,20 +1633,18 @@ export default function ContentAndAnalysisPage() {
                     </button>
                   </div>
                 </div>
-              )}
 
               {/* PILLAR 4: AI Reputation Shield & De-escalator */}
-              {reviewSubView === 'shield' && (
-                <div className="space-y-6 animate-in fade-in duration-200">
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                      <ShieldAlert className="w-4 h-4 text-rose-600" />
-                      <span>AI Reputation Shield & Crisis De-escalator</span>
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Google algorithms evaluate owner responses. Generate diplomatic, high-EQ public replies that neutralize anger, weave in positive local SEO keywords, and move disputes to private phone/email.
-                    </p>
-                  </div>
+              <div id="voc-shield" className="space-y-6 pt-8 border-t border-slate-200 scroll-mt-16">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-rose-600" />
+                    <span>4. AI Reputation Shield & Crisis De-escalator</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Google algorithms evaluate owner responses. Generate diplomatic, high-EQ public replies that neutralize anger, weave in positive local SEO keywords, and move disputes to private phone/email.
+                  </p>
+                </div>
 
                   {/* Interactive Live Generator */}
                   <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
@@ -1581,12 +1815,22 @@ export default function ContentAndAnalysisPage() {
                     </div>
                   </div>
                 </div>
-              )}
 
               {/* PILLAR 5: VoC Themes & High-Converting Copy */}
-              {reviewSubView === 'themes' && (
-                <div className="space-y-6 animate-in fade-in duration-200">
-                  {/* Praise vs Complaints Row */}
+              <div id="voc-themes" className="space-y-6 pt-8 border-t border-slate-200 scroll-mt-16">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Smile className="w-4 h-4 text-emerald-600" />
+                      <span>5. VoC Themes & High-Converting Copy Opportunities</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Synthesized customer sentiment themes and ready-to-deploy headline copy extracted from natural customer vocabulary.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Praise vs Complaints Row */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="bg-emerald-50/60 border border-emerald-100 rounded-2xl p-5 space-y-3">
                       <div className="flex items-center gap-2">
@@ -1705,7 +1949,6 @@ export default function ContentAndAnalysisPage() {
                     </div>
                   </div>
                 </div>
-              )}
             </>
           ) : (
             <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center shadow-xs">

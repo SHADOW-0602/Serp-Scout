@@ -299,17 +299,81 @@ router.post(
         .where(and(eq(competitors.businessId, businessId), inArray(competitors.status, ['confirmed', 'candidate'])))
         .limit(6);
 
+      // 1. Query real Google SERP snippets & titles matching competitor domains
+      const competitorDomains = compList.map((c) => c.domain.toLowerCase());
+      const relevantSearchResults = competitorDomains.length > 0 ? await db
+        .select({
+          domain: searchResults.domain,
+          title: searchResults.title,
+          snippet: searchResults.snippet,
+          url: searchResults.url,
+        })
+        .from(searchResults)
+        .where(inArray(searchResults.domain, competitorDomains))
+        .limit(40) : [];
+
+      const searchResultsByDomain = new Map<string, { snippets: string[]; titles: string[]; urls: string[] }>();
+      for (const res of relevantSearchResults) {
+        const dom = res.domain.toLowerCase();
+        if (!searchResultsByDomain.has(dom)) {
+          searchResultsByDomain.set(dom, { snippets: [], titles: [], urls: [] });
+        }
+        const entry = searchResultsByDomain.get(dom)!;
+        if (res.snippet && !entry.snippets.includes(res.snippet)) entry.snippets.push(res.snippet);
+        if (res.title && !entry.titles.includes(res.title)) entry.titles.push(res.title);
+        if (res.url && !entry.urls.includes(res.url)) entry.urls.push(res.url);
+      }
+
+      // 2. Perform fast parallel live extraction of competitor homepage meta description & title
+      const competitorPayloads = await Promise.all(
+        compList.map(async (c) => {
+          const dom = c.domain.toLowerCase();
+          const srData = searchResultsByDomain.get(dom);
+          const meta = (c.metadata as any) || {};
+
+          let liveMeta: { title?: string; description?: string; h1?: string } | undefined;
+          if (c.websiteUrl && c.websiteUrl.startsWith('http')) {
+            try {
+              const res = await fetch(c.websiteUrl, {
+                signal: AbortSignal.timeout(2500),
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+              });
+              if (res.ok) {
+                const html = await res.text();
+                const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+                const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i) ||
+                                  html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*name=["']description["']/i);
+                const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+                liveMeta = {
+                  title: titleMatch?.[1]?.trim(),
+                  description: descMatch?.[1]?.trim(),
+                  h1: h1Match?.[1]?.trim(),
+                };
+              }
+            } catch {
+              // Gracefully fall back to SERP snippets and profile metadata
+            }
+          }
+
+          return {
+            name: c.name,
+            domain: c.domain,
+            websiteUrl: c.websiteUrl,
+            snippets: srData?.snippets || [],
+            titles: srData?.titles || [],
+            liveMeta,
+            extractedProfile: meta.extractedProfile || undefined,
+          };
+        })
+      );
+
       const messagingResult = await analyzeCompetitorMessaging({
         business: {
           name: biz.name,
           services: svcs.map((s) => s.name),
           city: biz.city || undefined,
         },
-        competitorData: compList.map((c) => ({
-          name: c.name,
-          domain: c.domain,
-          websiteUrl: c.websiteUrl,
-        })),
+        competitorData: competitorPayloads,
         apiKey: env.GROQ_API_KEY,
       });
 
